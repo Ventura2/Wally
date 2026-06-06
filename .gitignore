@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+.uv/
+
+# IDE
+.vscode/
+.idea/
+
+# Output directories
+shards/
+samples/
+
+# Build artifacts
+dist/
+build/
+
+# Minecraft server
+minecraft-server/
