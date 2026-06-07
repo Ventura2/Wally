@@ -1,0 +1,30 @@
+# Action schema: MineStudio "env" action type keys in order
+# Adjust based on your MineStudio version
+action_schema:
+  - forward
+  - backward
+  - left
+  - right
+  - jump
+  - sneak
+  - sprint
+  - attack
+  - use
+  - drop
+  - camera_pitch
+  - camera_yaw
+  - hotbar_1
+  - hotbar_2
+  - hotbar_3
+  - hotbar_4
+  - hotbar_5
+  - hotbar_6
+  - hotbar_7
+  - hotbar_8
+  - hotbar_9
+  - inventory
+  - pickItem
+  - placeItem
+  - craft
+
+episodes_per_shard: 50

@@ -7,15 +7,16 @@ Wally collects gameplay trajectories from Minecraft (via [MineStudio](https://gi
 ## Pipeline
 
 ```
-Collect → Export → Validate → Train
+Collect → Export → Convert → Train
 ```
 
 | Step | Package | What it does |
 |---|---|---|
 | **Collect** | `src/collector/` | Runs episodes in Minecraft via MineStudio, records observation-action-reward transitions with `frame_skip`, accumulates them in a buffer. |
 | **Export** | `src/exporter/` | Writes transitions to `.tar` shards (JPEG observations + JSON sidecars) and generates a `manifest.json`. |
+| **Convert** | `src/wally/data/converter.py` | Reassembles per-step shards into episode sequences (`.npz` files with frames + actions arrays) for training. |
 | **Validate** | `src/validator/` | CLI + API for inspecting shard stats, validating schema/JPEG integrity, and extracting sample frames. |
-| **Train** | `src/wally/` | Trains a LeWorldModel (ViT encoder + causal Transformer predictor + SIGReg) on exported shards. |
+| **Train** | `src/wally/` | Trains a LeWorldModel (ViT encoder + causal Transformer predictor + SIGReg) on converted shards. |
 
 ## Setup
 
@@ -55,7 +56,97 @@ python -m validator.cli validate shards/
 python -m validator.cli samples shards/ --num 5 --output samples/
 ```
 
+## Running the full pipeline
+
+### Prerequisites
+
+- WSL2 (Linux) — MineStudio requires Linux
+- Python 3.12+
+- CUDA-capable GPU recommended for training
+- Minecraft Java server running (accessible from WSL)
+
+### Step 0: Environment setup
+
+```bash
+# In WSL2
+git clone <repo-url> wally
+cd wally
+uv sync
+uv pip install minestudio
+
+# Verify installation
+uv run pytest
+```
+
+### Step 1: Collect trajectories
+
+```python
+from src.collector.collector import TrajectoryCollector
+from src.collector.config import CollectorConfig
+
+config = CollectorConfig(
+    frame_skip=4,
+    resize=(224, 224),
+    buffer_size=10000,
+    output_dir="output/raw",
+)
+collector = TrajectoryCollector(config)
+transitions = collector.run(num_episodes=100)
+collector.close()
+```
+
+**Requirements**: Minecraft Java server must be running and accessible.
+
+### Step 2: Export to shards
+
+```python
+from src.exporter.shard_writer import ShardWriter
+from src.exporter.metadata import generate_manifest
+
+writer = ShardWriter(output_dir="data/raw_shards", shard_size=1000)
+shard_infos = writer.write_shards(transitions)
+episode_ids = {t["episode_id"] for t in transitions}
+generate_manifest(shard_infos, output_dir="data/raw_shards", episode_ids=episode_ids)
+```
+
+**Output**: `data/raw_shards/*.tar` — each contains per-step JPEG frames + JSON action sidecars.
+
+### Step 3: Convert to training format
+
+The training pipeline expects episode sequences (`.npz` files), not per-step data. Convert with:
+
+```bash
+wally-convert --input data/raw_shards --output data/shards --config configs/converter_default.yaml
+```
+
+Or programmatically:
+
+```python
+from src.wally.data.converter import convert_shards
+
+convert_shards(
+    input_dir="data/raw_shards",
+    output_dir="data/shards",
+    action_schema=["forward", "backward", "left", "right", "jump", ...],  # 25 keys
+    episodes_per_shard=50,
+)
+```
+
+**Output**: `data/shards/*.tar` — each contains `.npz` files with `frames` (T, H, W, 3) and `actions` (T, 25) arrays.
+
+### Step 4: Train
+
+```bash
+wally-train --config configs/lewm_default.yaml
+```
+
+Training reads from `data/shards/` (configured in `lewm_default.yaml`).
+
 ### Train LeWorldModel
+
+Training reads **converted WebDataset shards** from `data/shards/` by default. These shards contain `.npz` files with episode sequences, not the raw JPEG+JSON format from the exporter.
+
+If you have raw shards from the exporter, run the conversion step first (see "Running the full pipeline" above).
 
 Training reads WebDataset shards from `data/shards/` by default and writes checkpoints to `checkpoints/`.
 
@@ -142,10 +233,10 @@ src/
   validator/     # shard inspection, validation, sample extraction
   wally/         # LeWorldModel training pipeline
     models/      # ViT encoder, action embedder, causal Transformer predictor
-    data/        # WebDataset shard loading, preprocessing, dataloader
+    data/        # WebDataset shard loading, preprocessing, dataloader, converter
     training/    # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation
     config/      # TrainConfig, ModelConfig, YAML loader
-    cli/         # wally-train entry point
+    cli/         # wally-train, wally-convert entry points
 configs/         # example YAML configs
 tests/           # unit tests + end-to-end integration test
 ```
