@@ -33,6 +33,8 @@ wally-train = "wally.cli.train:main"
 wally-convert = "wally.cli.convert:main"
 wally-collect = "wally.cli.collect:main"
 wally-plan = "wally.planner.cli:main"
+wally-plan-hierarchical = "wally.planner.hierarchical_cli:main"
+wally-train-curriculum = "wally.cli.train_curriculum:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -254,7 +254,51 @@ Each checkpoint is a `.pt` file containing:
 - `global_step` — training step at save time
 - `config` — full training config dict
 
-### Step 4: Deploy
+### Step 4: Plan
+
+Plan action sequences using a trained world model. Two planning modes are available:
+
+#### Flat planning (CEM-based MPC)
+
+Short-horizon planning using Cross-Entropy Method optimization:
+
+```bash
+wally-plan --checkpoint checkpoints/model.pt --frames frames_dir/ --output actions.pt
+```
+
+#### Hierarchical planning
+
+Long-horizon planning with automatic subgoal decomposition:
+
+```bash
+wally-plan-hierarchical \
+    --checkpoint checkpoints/model.pt \
+    --high-level-checkpoint checkpoints/high_level.pt \
+    --frames frames_dir/ \
+    --output plan.pt
+```
+
+The hierarchical planner:
+- Detects context-change points in trajectories using prediction error analysis
+- Trains a high-level world model on abstract transitions between subgoals
+- Plans sequences of latent subgoals toward distant goals
+- Executes subgoals sequentially with low-level planner, with replanning on failure
+- Supports gradient-based MPC refinement and ensemble uncertainty estimation
+
+#### Curriculum training
+
+Train with progressive horizon increases for better long-horizon learning:
+
+```bash
+wally-train-curriculum \
+    --data-dir data/shards \
+    --output-dir checkpoints \
+    --stages 8,16,32,64 \
+    --loss-threshold 0.01 \
+    --patience 5
+```
+
+### Step 5: Deploy
 
 Once trained, deploy the agent to play Minecraft autonomously. Two deployment paths are available:
 
@@ -359,11 +403,12 @@ src/
   exporter/      # ShardWriter, manifest generation (legacy, used by tests)
   validator/     # shard inspection, validation, sample extraction
   wally/         # LeWorldModel training pipeline
-    models/      # ViT encoder, action embedder, causal Transformer predictor
+    models/      # ViT encoder, action embedder, causal Transformer predictor, recurrent encoder
     data/        # WebDataset shard loading, preprocessing, dataloader, converter
-    training/    # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation
+    training/    # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation, curriculum, curiosity, ensemble
     config/      # TrainConfig, ModelConfig, YAML loader
-    cli/         # wally-train, wally-convert, wally-collect, wally-deploy entry points
+    planner/     # CEM, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
+    cli/         # wally-train, wally-convert, wally-collect, wally-train-curriculum entry points
 configs/         # example YAML configs
 tests/           # unit tests + end-to-end integration test
 ```

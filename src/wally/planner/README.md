@@ -1,7 +1,8 @@
 # Planner
 
 Goal-conditioned planning in latent space using Cross-Entropy Method (CEM)
-with a trained LeWorldModel.
+with a trained LeWorldModel. Supports both flat MPC and hierarchical planning
+with subgoal decomposition.
 
 ## Public API
 
@@ -130,4 +131,66 @@ from wally.planner.actions import MineStudioActionVocab, continuous_to_discrete
 
 vocab = MineStudioActionVocab.default()
 discrete = continuous_to_discrete(actions, vocab)
+```
+
+## Hierarchical Planning
+
+For long-horizon tasks, the hierarchical planner decomposes goals into subgoals
+and executes them sequentially with replanning on failure.
+
+### SubgoalDetector
+
+Detects context-change points in trajectories using prediction error analysis:
+
+```python
+from wally.planner.subgoal_detector import SubgoalDetector, SubgoalDetectorConfig
+
+config = SubgoalDetectorConfig(threshold=1.0, smoothing_window=5, min_segment_length=8)
+detector = SubgoalDetector(config)
+
+errors = detector.compute_prediction_errors(model, frames, actions)
+smoothed = detector.smooth_errors(errors)
+change_points = detector.detect_change_points(smoothed)
+transitions = detector.extract_abstract_transitions(latents, actions, change_points)
+```
+
+### HighLevelPlanner
+
+Plans sequences of latent subgoals using CEM over a high-level world model:
+
+```python
+from wally.planner.high_level_planner import HighLevelPlanner, HighLevelPlannerConfig
+
+config = HighLevelPlannerConfig(macro_horizon=5, population_size=32)
+planner = HighLevelPlanner(high_level_model, encoder, config)
+
+subgoal_latents, cost = planner.plan_subgoals(current_frame, goal_frame)
+targets = planner.subgoals_to_targets(subgoal_latents)
+```
+
+### GradientMPC
+
+Gradient-based refinement of CEM-optimized action sequences:
+
+```python
+from wally.planner.gradient_mpc import GradientMPC, GradientMPCConfig
+
+config = GradientMPCConfig(learning_rate=0.01, n_refinement_steps=10)
+mpc = GradientMPC(world_model, encoder, config)
+
+actions = mpc.plan(current_frame, goal_frame)
+```
+
+### HierarchicalPlanner
+
+Orchestrates high-level and low-level planners with subgoal execution:
+
+```python
+from wally.planner.hierarchical_planner import HierarchicalPlanner, HierarchicalPlannerConfig
+
+config = HierarchicalPlannerConfig(subgoal_timeout=50, max_replans=3)
+planner = HierarchicalPlanner(high_level_planner, low_level_planner, config)
+
+result = planner.plan(current_frame, goal_frame)
+# result.actions, result.success, result.subgoals, result.replan_count
 ```

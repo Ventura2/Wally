@@ -25,11 +25,12 @@ Application code lives in `src/` with these packages:
 - `src/exporter/` — WebDataset shard export (`ShardWriter`, `generate_manifest`) — legacy, used by tests
 - `src/validator/` — shard inspection and validation CLI (`validator.cli` with `inspect`, `validate`, `samples`)
 - `src/wally/` — LeWorldModel training pipeline
-  - `models/` — ViT encoder, action embedder, causal Transformer predictor
+  - `models/` — ViT encoder, action embedder, causal Transformer predictor, recurrent encoder
   - `data/` — WebDataset shard loading, preprocessing, dataloader, converter
-  - `training/` — losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation
+  - `training/` — losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation, curriculum, curiosity, ensemble
   - `config/` — TrainConfig, ModelConfig, YAML loader
-  - `cli/` — `wally-train`, `wally-convert`, `wally-collect` entry points
+  - `planner/` — CEM optimizer, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
+  - `cli/` — `wally-train`, `wally-convert`, `wally-collect`, `wally-train-curriculum` entry points
 
 Tests live in `tests/` covering all packages plus an end-to-end integration test.
 
@@ -38,6 +39,9 @@ Tests live in `tests/` covering all packages plus an end-to-end integration test
 - `wally-collect` — collect trajectories from Minecraft, saves raw `.tar` shards to `data/raw/`
 - `wally-convert` — convert raw shards to training format (`.npz` per episode) in `data/shards/`
 - `wally-train` — train LeWorldModel from converted shards
+- `wally-train-curriculum` — train with progressive horizon curriculum (8 → 16 → 32 → full)
+- `wally-plan` — plan action sequences using CEM-based MPC
+- `wally-plan-hierarchical` — hierarchical planning with subgoal decomposition
 - `wally-validate` — inspect/validate/sample shards
 
 ## Data format
@@ -73,4 +77,16 @@ Key directories:
 - `openspec/changes/` — active changes with delta specs, designs, and task lists
 - `openspec/changes/archive/` — completed changes
 
-Note: Use TDD (Test-driven development) for `/opsx-apply` implementation tasks that contains complex logic, algorithms, or well-defined interfaces, consider writing tests first to clarify requirements before implementation. 
+## /opsx-apply workflow
+
+When running `/opsx-apply`, delegate each task to a separate subagent via the Task tool instead of implementing tasks serially in the main conversation. This keeps each task focused and parallelizable.
+
+Pattern for each task:
+1. Read the task description and all relevant context files (specs, design, existing code)
+2. Create a subagent via the Task tool with a detailed prompt covering: what to implement, which files to edit/create, how to verify (lint, typecheck, test commands), and relevant code conventions
+3. The subagent returns when done — review the result, ensure tests pass, then mark the task complete in the tasks file
+4. Move to the next task
+
+Use the `general` subagent type for implementation tasks. Use the `explore` subagent type for research/investigation tasks.
+
+Note: Use TDD (test-driven development) for tasks that contain complex logic, algorithms, or well-defined interfaces — write tests first to clarify requirements before implementation. 
