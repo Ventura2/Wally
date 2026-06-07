@@ -1,5 +1,27 @@
 ## ADDED Requirements
 
+### Requirement: Planner protocol abstraction
+The system SHALL define a `PlannerProtocol` that abstracts over both flat and hierarchical planners, allowing the `AgentLoop` to work with either interchangeably.
+
+#### Scenario: Flat planner satisfies protocol
+- **WHEN** a `GoalConditionedPlanner` or `GradientMPC` is passed to the `AgentLoop`
+- **THEN** the `AgentLoop` SHALL call `plan(current_frame, goal_frame)` and normalize the returned `torch.Tensor` into a `PlanResult` with `actions`, `success=True`, and `cost`
+
+#### Scenario: Hierarchical planner satisfies protocol
+- **WHEN** a `HierarchicalPlanner` is passed to the `AgentLoop`
+- **THEN** the `AgentLoop` SHALL call `plan(current_frame, goal_frame)` and use the returned `HierarchicalPlanResult` directly, mapping its fields to the unified `PlanResult`
+
+### Requirement: Unified plan result
+The system SHALL define a `PlanResult` dataclass with fields: `actions` (torch.Tensor), `subgoals` (torch.Tensor | None), `success` (bool), `cost` (float), `replan_count` (int), and `low_confidence` (bool). The `AgentLoop` SHALL normalize all planner outputs into this type.
+
+#### Scenario: Flat planner result normalization
+- **WHEN** a flat planner returns a `torch.Tensor` of shape `(H, 25)`
+- **THEN** the system SHALL wrap it as `PlanResult(actions=tensor, subgoals=None, success=True, cost=0.0, replan_count=0, low_confidence=False)`
+
+#### Scenario: Hierarchical planner result pass-through
+- **WHEN** a hierarchical planner returns a `HierarchicalPlanResult`
+- **THEN** the system SHALL map its fields directly to `PlanResult` without transformation
+
 ### Requirement: MineStudio agent environment wrapper
 The system SHALL provide a `MineStudioAgentEnv` class that wraps the MineStudio simulator and exposes `reset()`, `step()`, and `close()` methods suitable for agent-driven interaction.
 
