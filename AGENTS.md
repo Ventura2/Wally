@@ -48,3 +48,5 @@ Key directories:
 - `openspec/specs/` — main capability specs (shared across changes, source of truth)
 - `openspec/changes/` — active changes with delta specs, designs, and task lists
 - `openspec/changes/archive/` — completed changes
+
+Note: Use TDD (Test-driven development) for `/opsx-apply` implementation tasks that contains complex logic, algorithms, or well-defined interfaces, consider writing tests first to clarify requirements before implementation. 
