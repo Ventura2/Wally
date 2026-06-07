@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import torch
+
+from wally.planner.config import CEMConfig
+from wally.planner.plan import GoalConditionedPlanner
+
+
+def _make_mock_rollout(latent_dim: int = 8) -> MagicMock:
+    mock = MagicMock()
+
+    def rollout(z_0: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+        B, H, _ = actions.shape
+        trajectory = torch.randn(B, H + 1, latent_dim)
+        trajectory[:, 0, :] = z_0
+        return trajectory
+
+    mock.rollout = MagicMock(side_effect=rollout)
+    return mock
+
+
+def _make_encoder(latent_dim: int = 8) -> MagicMock:
+    def encoder(frame: torch.Tensor) -> torch.Tensor:
+        B = frame.shape[0]
+        return torch.randn(B, latent_dim)
+
+    return MagicMock(side_effect=encoder)
+
+
+class TestGoalConditionedPlanner:
+    def test_bounded_actions(self):
+        cfg = CEMConfig(
+            population_size=32, n_iterations=3, horizon=4,
+            action_low=-0.5, action_high=0.5,
+        )
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        frame = torch.randn(3, 64, 64)
+        actions = planner.plan(frame, frame)
+        assert actions.min() >= -0.5
+        assert actions.max() <= 0.5
+
+    def test_encoder_reuse(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current = torch.randn(3, 64, 64)
+        goal = torch.randn(3, 64, 64)
+        planner.plan(current, goal)
+
+        assert encoder.call_count == 2
+        assert planner.encoder is encoder
+
+    def test_default_cost_function(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        frame = torch.randn(3, 64, 64)
+        actions = planner.plan(frame, frame)
+        assert actions.shape == (3, 25)
+
+    def test_custom_cost_function(self):
+        custom_called = []
+
+        def custom_cost(z_H: torch.Tensor, z_g: torch.Tensor) -> torch.Tensor:
+            custom_called.append(True)
+            return (z_H - z_g).abs().sum(dim=-1)
+
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(
+            rollout, encoder, cfg, device="cpu", cost_fn=custom_cost
+        )
+
+        frame = torch.randn(3, 64, 64)
+        planner.plan(frame, frame)
+        assert len(custom_called) > 0
+
+    def test_device_auto_select(self):
+        cfg = CEMConfig()
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg)
+
+        expected = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        assert planner.device == expected
+
+    def test_device_explicit_override(self):
+        cfg = CEMConfig()
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+        assert planner.device == torch.device("cpu")
+
+    def test_return_cost_true(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        frame = torch.randn(3, 64, 64)
+        result = planner.plan(frame, frame, return_cost=True)
+        assert isinstance(result, tuple)
+        actions, cost = result
+        assert actions.shape == (3, 25)
+        assert isinstance(cost, float)
+
+    def test_return_cost_false(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        frame = torch.randn(3, 64, 64)
+        result = planner.plan(frame, frame)
+        assert isinstance(result, torch.Tensor)
+
+    def test_4d_input(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        frame = torch.randn(2, 3, 64, 64)
+        actions = planner.plan(frame, frame)
+        assert actions.shape == (3, 25)

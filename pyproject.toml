@@ -18,6 +18,7 @@ dependencies = [
     "wandb>=0.15.0",
     "einops>=0.6.0",
     "matplotlib>=3.7.0",
+    "pydantic>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -31,9 +32,11 @@ dev = [
 wally-train = "wally.cli.train:main"
 wally-convert = "wally.cli.convert:main"
 wally-collect = "wally.cli.collect:main"
+wally-plan = "wally.planner.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["smoke: fast smoke tests for CI"]
 
 [tool.ruff]
 src = ["src"]

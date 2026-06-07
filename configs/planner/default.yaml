@@ -1,0 +1,7 @@
+population_size: 64
+elite_frac: 0.1
+n_iterations: 5
+horizon: 8
+action_low: -1.0
+action_high: 1.0
+gradient_policy: detach

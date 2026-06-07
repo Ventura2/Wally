@@ -7,7 +7,7 @@ Wally collects gameplay trajectories from Minecraft (via [MineStudio](https://gi
 ## Pipeline
 
 ```
-Collect → Convert → Train
+Collect → Convert → Train → Deploy
 ```
 
 | Step | Package | What it does |
@@ -16,6 +16,7 @@ Collect → Convert → Train
 | **Convert** | `src/wally/data/converter.py` | Reassembles per-step shards into episode sequences (`.npz` files with frames + actions arrays) for training. |
 | **Validate** | `src/validator/` | CLI + API for inspecting shard stats, validating schema/JPEG integrity, and extracting sample frames. |
 | **Train** | `src/wally/` | Trains a LeWorldModel (ViT encoder + causal Transformer predictor + SIGReg) on converted shards. |
+| **Deploy** | `src/deployer/` | Runs trained agent on Minecraft — locally via MineStudio or on a live server via network protocol. |
 
 ## Concepts
 
@@ -253,6 +254,88 @@ Each checkpoint is a `.pt` file containing:
 - `global_step` — training step at save time
 - `config` — full training config dict
 
+### Step 4: Deploy
+
+Once trained, deploy the agent to play Minecraft autonomously. Two deployment paths are available:
+
+#### Path A: Local Evaluation (MineStudio)
+
+Run the agent in a local MineStudio environment for development, testing, and benchmarking.
+
+```bash
+wally-deploy --checkpoint checkpoints/checkpoint_10000.pt --mode local --goal "collect_wood"
+```
+
+**Use when:**
+- Developing and tuning the planner
+- Running benchmarks and evaluations
+- Debugging agent behavior
+- Fast iteration without server setup
+
+**Features:**
+- Direct environment access (no network latency)
+- Synchronous execution
+- Full access to environment state
+- Reproducible results
+
+#### Path B: Live Server Deployment
+
+Deploy the agent to a live Minecraft server (vanilla, Paper, Spigot, Fabric) for persistent, multi-player gameplay.
+
+```bash
+wally-deploy --checkpoint checkpoints/checkpoint_10000.pt --mode server \
+    --server localhost:25565 --username WallyAgent --offline
+```
+
+Or with Microsoft account authentication:
+
+```bash
+wally-deploy --checkpoint checkpoints/checkpoint_10000.pt --mode server \
+    --server play.example.com --auth microsoft
+```
+
+**Use when:**
+- Watching the agent play in real-time (spectate from the server)
+- Multi-player environments
+- Persistent autonomous gameplay
+- Demonstrating agent capabilities
+
+**Features:**
+- Network protocol via pyCraft (Minecraft 1.8-1.20+)
+- Automatic reconnection on disconnect
+- Action throttling (20 TPS)
+- Safety bounds (configurable)
+- Session persistence and state recovery
+
+**Configuration:**
+
+Use a YAML config for advanced options:
+
+```yaml
+# deploy_config.yaml
+mode: server
+checkpoint: checkpoints/checkpoint_10000.pt
+server:
+  address: localhost:25565
+  auth: offline  # or "microsoft"
+  username: WallyAgent
+agent:
+  goal: "collect_wood"
+  replan_interval: 20  # steps
+safety:
+  prevent_bedrock_break: true
+  prevent_lava_interaction: true
+  action_cooldown_ms: 50
+```
+
+```bash
+wally-deploy --config deploy_config.yaml
+```
+
+**Which path to choose?**
+
+Start with **Path A (Local)** for development and testing. When ready to see the agent play in a real Minecraft world or interact with other players, deploy to a **Path B (Live Server)**.
+
 ## Tests
 
 ```bash
@@ -272,6 +355,7 @@ uv run mypy
 ```
 src/
   collector/     # env wrapper, recorder, buffer, config, raw_shard_writer
+  deployer/      # server connector, session manager, action throttler, safety filter
   exporter/      # ShardWriter, manifest generation (legacy, used by tests)
   validator/     # shard inspection, validation, sample extraction
   wally/         # LeWorldModel training pipeline
@@ -279,7 +363,7 @@ src/
     data/        # WebDataset shard loading, preprocessing, dataloader, converter
     training/    # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation
     config/      # TrainConfig, ModelConfig, YAML loader
-    cli/         # wally-train, wally-convert, wally-collect entry points
+    cli/         # wally-train, wally-convert, wally-collect, wally-deploy entry points
 configs/         # example YAML configs
 tests/           # unit tests + end-to-end integration test
 ```
