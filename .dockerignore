@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+*.md
+data/
+checkpoints/
+output/
+.vscode/
+.idea/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

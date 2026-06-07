@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from src.collector.buffer import TrajectoryBuffer
 from src.collector.config import CollectorConfig
 from src.collector.env import MineStudioEnv
+from src.collector.raw_shard_writer import RawShardWriter
 from src.collector.recorder import TransitionRecorder
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,12 @@ class TrajectoryCollector:
             max_size=config.buffer_size,
             flush_callback=self._on_flush,
         )
+        self._writer = RawShardWriter(
+            output_dir=config.output_dir,
+            shard_size=config.buffer_size,
+            jpeg_quality=config.jpeg_quality,
+        )
+        self._writer.__enter__()
         self._collected: List[Dict[str, Any]] = []
         self._shutdown_requested = False
         self._original_sigint: Any = None
@@ -28,6 +35,8 @@ class TrajectoryCollector:
     def _on_flush(self, transitions: List[Dict[str, Any]]) -> None:
         logger.info("Flushing %d transitions", len(transitions))
         self._collected.extend(transitions)
+        for t in transitions:
+            self._writer.add(t)
 
     def _handle_sigint(self, signum: int, frame: Any) -> None:
         logger.info("Shutdown requested, finishing current episode...")
@@ -83,6 +92,7 @@ class TrajectoryCollector:
 
     def close(self) -> None:
         self.buffer.shutdown()
+        self._writer.close()
         try:
             self.env.close()
         except Exception:

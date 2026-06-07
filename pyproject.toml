@@ -30,6 +30,7 @@ dev = [
 [project.scripts]
 wally-train = "wally.cli.train:main"
 wally-convert = "wally.cli.convert:main"
+wally-collect = "wally.cli.collect:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

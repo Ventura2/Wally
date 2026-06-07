@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 import numpy as np
-
 from src.collector.config import CollectorConfig
 
 try:
@@ -33,7 +32,9 @@ class MineStudioEnv:
         obs_dict, _info = self._sim.reset()
         return obs_dict["image"]
 
-    def step(self, action: Dict[str, Any]) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(
+        self, action: Dict[str, Any]
+    ) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         obs_dict, reward, terminated, truncated, info = self._sim.step(action)
         done = terminated or truncated
         return obs_dict["image"], reward, done, info

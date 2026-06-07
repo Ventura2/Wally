@@ -1,0 +1,19 @@
+services:
+  wally:
+    build: .
+    image: wally-dev
+    container_name: wally-dev
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    # AMD ROCm GPU passthrough not available in Podman on WSL2
+    # For GPU training, run natively in WSL2 or use a Linux host
+    # For headless rendering (dev/testing)
+    environment:
+      - DISPLAY=:99
+      - MINESTUDIO_GPU_RENDER=0
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0  # AMD RX 6000 series, adjust for your GPU
+    # Network mode for accessing Minecraft server
+    network_mode: host
