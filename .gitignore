@@ -19,9 +19,48 @@ __pycache__/
 shards/
 samples/
 
+# Data directories (raw trajectories, training shards, model checkpoints)
+data/
+data/raw/
+data/shards/
+data/checkpoints/
+data/converted/
+checkpoints/
+models/
+
+# Logs
+logs/
+*.log
+
 # Build artifacts
 dist/
 build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+.tmp/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.gz
+
+# WSL/ROCm build artifacts
+librocdxg/
+*.so
+*.so.*
+*.a
+
+# Personal dev scripts (hardcoded /workspace/ paths, not reusable)
+tools/
 
 # Minecraft server
 minecraft-server/

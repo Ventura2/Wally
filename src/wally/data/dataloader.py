@@ -29,6 +29,7 @@ def create_dataloader(
     num_workers: int = 4,
     seq_length: int = 16,
     skip_short: bool = True,
+    pin_memory: bool | None = None,
 ) -> torch.utils.data.DataLoader:
     """Create a DataLoader for WebDataset shard files.
 
@@ -49,9 +50,11 @@ def create_dataloader(
         shuffle=True,
     )
 
+    if pin_memory is None:
+        pin_memory = torch.cuda.is_available()
     return torch.utils.data.DataLoader(
         dataset.batched(batch_size, collation_fn=collate_samples),
         batch_size=None,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin_memory,
     )

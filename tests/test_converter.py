@@ -116,10 +116,9 @@ class TestEncodeAction:
 
 class TestDecodeJpeg:
     def test_decode_jpeg(self):
-        h, w = 32, 48
-        jpg_bytes = _make_jpeg_bytes(h, w)
+        jpg_bytes = _make_jpeg_bytes(32, 48)
         arr = _decode_jpeg(jpg_bytes)
-        assert arr.shape == (h, w, 3)
+        assert arr.shape == (224, 224, 3), "should resize to 224x224"
         assert arr.dtype == np.uint8
 
     def test_decode_jpeg_rgb(self):
@@ -141,6 +140,7 @@ class TestLoadRawShards:
                 assert "action" in t
                 assert isinstance(t["observation"], np.ndarray)
                 assert t["observation"].ndim == 3
+                assert t["observation"].shape == (224, 224, 3)
 
     def test_load_raw_shards_empty_dir(self, tmp_path):
         raw_dir = tmp_path / "empty"
@@ -192,7 +192,7 @@ class TestConvertShards:
                 data = np.load(io.BytesIO(f.read()))
                 assert "frames" in data
                 assert "actions" in data
-                assert data["frames"].shape == (10, 64, 64, 3)
+                assert data["frames"].shape == (10, 224, 224, 3)
                 assert data["actions"].shape == (10, 3)
                 assert data["frames"].dtype == np.uint8
                 assert data["actions"].dtype == np.float32
@@ -275,7 +275,7 @@ class TestConvertShards:
                     frames, actions, seq_length=8, skip_short=True,
                 )
                 assert result is not None
-                assert result["frames"].shape == (8, 3, 224, 224)
+                assert result["frames"].shape == (8, 3, 224, 224), f"got {result['frames'].shape}"
                 assert result["actions"].shape == (8, 3)
                 samples_loaded += 1
 

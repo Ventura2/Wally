@@ -35,12 +35,18 @@ def decode_sample(sample: dict[str, Any]) -> dict[str, Any]:
                 frames = torch.from_numpy(arr)
             elif "action" in key:
                 actions = torch.from_numpy(arr)
-        elif key.endswith(".npz"):
-            data = np.load(io.BytesIO(value) if isinstance(value, bytes) else value)
-            if "frames" in data:
-                frames = torch.from_numpy(data["frames"])
-            if "actions" in data:
-                actions = torch.from_numpy(data["actions"])
+        elif key.endswith(".npz") or key == "npz":
+            if isinstance(value, dict):
+                if "frames" in value:
+                    frames = torch.from_numpy(value["frames"])
+                if "actions" in value:
+                    actions = torch.from_numpy(value["actions"])
+            else:
+                data = np.load(io.BytesIO(value) if isinstance(value, bytes) else value)
+                if "frames" in data:
+                    frames = torch.from_numpy(data["frames"])
+                if "actions" in data:
+                    actions = torch.from_numpy(data["actions"])
 
     if frames is None or actions is None:
         msg = f"Missing frames or actions in sample keys: {list(sample.keys())}"
@@ -116,7 +122,7 @@ def build_pipeline(
     dataset = wds.WebDataset(shards, shardshuffle=shuffle)
 
     if shuffle:
-        dataset = dataset.shuffle(1000)
+        dataset = dataset.shuffle(100)
 
     dataset = dataset.decode()
 

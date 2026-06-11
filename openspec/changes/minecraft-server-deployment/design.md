@@ -1,128 +1,84 @@
 ## Context
 
-The Wally project currently operates in two modes:
-1. **Data collection**: MineStudio environment captures gameplay trajectories for training
-2. **Evaluation**: Local MineStudio environment runs trained LeWorldModel planner for benchmarking
+The `minestudio-agent-loop` change introduces `AgentLoop`, `PlannerProtocol`, and `MineStudioAgentEnv` — enabling plan-execute-observe cycles in MineStudio's local environment. Server deployment extends this to real Minecraft servers by replacing the MineStudio backend with a pyCraft network connection while keeping `AgentLoop` unchanged.
 
-Both modes use MineStudio's single-player, locally-hosted Minecraft instances with direct environment access. The planner outputs action sequences that execute in a controlled, synchronous loop.
-
-To deploy on live servers, we need to bridge the gap between the planner's action output and Minecraft's network protocol. Live servers introduce network latency, authentication requirements, multi-player dynamics, and server-side rate limiting (20 TPS tick rate).
-
-**Constraints:**
-- AMD GPU (RX 6700 XT) for inference - must run efficiently
-- ROCm/PyTorch stack - prefer Python-native solutions
-- MineStudio already provides environment abstraction - leverage where possible
-- Server compatibility: vanilla, Paper, Spigot, Fabric (cover majority of servers)
+Key constraints:
+- `AgentLoop` and `PlannerProtocol` are not yet implemented (in-progress in `minestudio-agent-loop` change)
+- pyCraft is the only mature Python Minecraft protocol library supporting 1.8–1.20+
+- Minecraft servers run at 20 TPS (50ms tick), so action execution must be rate-limited
+- Observations from pyCraft arrive as structured packets (not raw pixels), requiring frame reconstruction
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Deploy trained planner agent to live Minecraft servers (vanilla and modded)
-- Maintain persistent connection with automatic reconnection on disconnect
-- Respect server tick rate and prevent action spam
-- Provide CLI for easy deployment (`wally-deploy`)
-- Support Microsoft account authentication and offline mode
-- Log agent actions and events for analysis
+- Deploy the trained planner agent as an autonomous player on a live Minecraft server
+- Reuse `AgentLoop` and `PlannerProtocol` unchanged via a `ServerEnv` adapter matching `MineStudioAgentEnv`'s interface
+- Provide reliable session persistence with automatic reconnection
+- Enforce safety bounds to prevent destructive or nonsensical agent behavior
+- Support both offline-mode (local) and online-mode (Microsoft auth) servers
 
 **Non-Goals:**
-- Multi-agent coordination (multiple agents working together) - future work
-- Server-side plugin/mod development - client-side only
-- Real-time video streaming - screenshots/logs only for now
-- GUI for monitoring - CLI-based for initial version
-- Support for Bedrock Edition - Java Edition only
+- Multi-agent coordination (one agent per deployment instance)
+- Real-time human-agent collaboration or chat interaction
+- Support for Bedrock Edition servers (Java Edition only via pyCraft)
+- GPU-accelerated rendering of server observations (CPU-only frame reconstruction)
+- Server administration (OP commands, world editing, plugin management)
 
 ## Decisions
 
-### 1. Protocol Bridge: pyCraft (Python-native Minecraft protocol library)
+### 1. pyCraft as protocol bridge
 
-**Decision:** Use `pyCraft` library for Minecraft server communication.
+**Choice**: Use `pyCraft` library for Minecraft protocol handling.
 
-**Rationale:**
-- Python-native - integrates directly with PyTorch/ROCm stack without Node.js subprocess
-- Supports Minecraft 1.8-1.20+ (covers most servers)
-- Active maintenance, handles protocol complexity
-- Avoids mineflayer (Node.js) which would require subprocess management and IPC
+**Rationale**: pyCraft is the only actively maintained Python library for Minecraft protocol (supports 1.8–1.20+, Java Edition). Alternatives considered:
+- **Custom protocol implementation**: Months of work, fragile, not worth it
+- **node-minecraft-protocol (Node.js)**: Would require a separate process and IPC bridge, adding complexity
+- **Java-based bots (Mineflayer)**: Same cross-language problem; Wally is Python-native
 
-**Alternatives considered:**
-- **mineflayer (Node.js)**: Mature but requires Node.js runtime, subprocess management, and JSON-RPC/IPC bridge - adds complexity
-- **MineStudio server mode**: Limited documentation, unclear if supports all server types
-- **Custom protocol implementation**: Too complex, protocol changes between versions
+**Trade-off**: pyCraft's API is callback-based and synchronous; we'll wrap it in an async layer.
 
-### 2. Architecture: Deployer Package with Modular Components
+### 2. ServerEnv adapter pattern
 
-**Decision:** Create `src/deployer/` package with three core modules:
-- `server_connector.py`: pyCraft wrapper, handles protocol, authentication, connection
-- `session_manager.py`: High-level session lifecycle (join, reconnect, heartbeat, shutdown)
-- `action_throttler.py`: Rate limiting, action queue, TPS synchronization
+**Choice**: Create `ServerEnv` with the same interface as `MineStudioAgentEnv` (`reset()`, `step()`, `close()`), reading observations from pyCraft instead of MineStudio.
 
-**Rationale:**
-- Separation of concerns - each module has single responsibility
-- Testable in isolation (mock pyCraft for unit tests)
-- Reusable for future multi-agent scenarios
-- Matches existing code patterns (collector, exporter, validator packages)
+**Rationale**: This lets `AgentLoop` work unchanged. The adapter pattern is already established — `MineStudioAgentEnv` wraps `MineStudioEnv`; `ServerEnv` wraps `ServerConnector`. Both produce preprocessed `(C,H,W)` tensors and accept continuous `(25,)` action vectors.
 
-**Alternatives considered:**
-- **Single monolithic deployer class**: Simpler but harder to test and maintain
-- **Extend MineStudio env wrapper**: Tight coupling to MineStudio limits flexibility
+**Alternative considered**: Subclassing `MineStudioAgentEnv` — rejected because the underlying observation source is fundamentally different (network packets vs. simulator frames), and inheritance would couple us to MineStudio internals.
 
-### 3. Action Execution: Async Queue with Throttling
+### 3. Async architecture with asyncio
 
-**Decision:** Use asyncio queue to decouple planner output from server execution. Planner produces actions, throttler consumes at server tick rate (20 TPS = 50ms per action).
+**Choice**: Use Python `asyncio` for the connection layer, action throttler, and event handling.
 
-**Rationale:**
-- Planner may produce actions faster than server can process (network latency, tick rate)
-- Queue provides natural backpressure
-- Async allows concurrent inference and execution
-- Matches Minecraft's tick-based architecture
+**Rationale**: Minecraft server interaction is inherently I/O-bound and event-driven. The action throttler needs precise timing (50ms intervals), reconnection needs non-blocking waits, and pyCraft events arrive asynchronously. Running the planner in a thread pool executor keeps the event loop responsive.
 
-**Alternatives considered:**
-- **Synchronous execution**: Blocks planner, can't overlap inference and execution
-- **Fixed delay (sleep 50ms)**: Doesn't account for network latency or server lag
+**Alternative considered**: Threading with queues — simpler but harder to manage reconnection state and graceful shutdown cleanly.
 
-### 4. Reconnection Strategy: Exponential Backoff with State Persistence
+### 4. Frame reconstruction from server packets
 
-**Decision:** On disconnect, attempt reconnection with exponential backoff (1s, 2s, 4s, 8s, max 60s). Persist last known position and inventory to resume from similar state.
+**Choice**: Reconstruct RGB frames from pyCraft's chunk data + entity position/rotation using a lightweight software renderer (or Minecraft's own map rendering if available via protocol).
 
-**Rationale:**
-- Servers restart, network issues occur - agent must be resilient
-- Exponential backoff prevents server spam during outages
-- State persistence allows graceful recovery (not starting from spawn)
+**Rationale**: pyCraft provides chunk block data and the bot's position/look direction. We need to synthesize a first-person view image matching the `(H,W,3)` format the world model expects. Options:
+- **Chunk-based rendering**: Reconstruct a local voxel grid from chunk packets, raycast from player position to produce a first-person image. Computationally cheap for small render distances.
+- **Map item protocol**: Some servers support map rendering via protocol, but this is server-dependent and unreliable.
 
-**Alternatives considered:**
-- **Immediate reconnect**: Can spam server, may get banned
-- **No reconnection**: Agent dies on first disconnect - unacceptable for persistent deployment
+We'll start with chunk-based rendering at a short render distance (4–6 chunks) and iterate.
 
-### 5. Authentication: Support Microsoft OAuth and Offline Mode
+### 5. Config via Pydantic BaseModel
 
-**Decision:** Implement both Microsoft account authentication (for online servers) and offline mode (for local/private servers). Use `pyCraft`'s built-in auth support.
+**Choice**: `DeployConfig` as a Pydantic `BaseModel`, following the pattern established by `AgentConfig`, `CEMConfig`, etc.
 
-**Rationale:**
-- Microsoft auth required for most public servers (Minecraft online mode)
-- Offline mode essential for local testing and private servers
-- pyCraft handles OAuth flow - minimal custom code
+**Rationale**: Consistent with existing config classes. Pydantic provides validation, YAML loading via `from_yaml()`, and `default()` factory. Fields: server address, auth mode, checkpoint path, goal frame path, safety filter toggles, reconnect policy.
 
-**Alternatives considered:**
-- **Microsoft auth only**: Can't test locally without online server
-- **Offline mode only**: Can't join most public servers
+### 6. Package location: `src/deployer/`
+
+**Choice**: New top-level package `src/deployer/` using `src.` import prefix.
+
+**Rationale**: Follows the pattern of `src/collector/`, `src/agent/`, `src/validator/` — each a standalone top-level package under `src/`. The `wally/` package is reserved for the core ML pipeline.
 
 ## Risks / Trade-offs
 
-**[Risk] Network latency causes action desync** → Mitigation: Action throttler tracks server TPS and adjusts timing. Log warnings if latency exceeds threshold.
-
-**[Risk] Server compatibility issues (protocol variations, anti-cheat)** → Mitigation: Test against vanilla, Paper, Spigot. Document known incompatible servers. Allow protocol version configuration.
-
-**[Risk] Agent gets stuck or behaves unexpectedly** → Mitigation: Implement safety bounds (no breaking bedrock, no lava interaction). Add configurable action cooldowns. Provide emergency stop command.
-
-**[Risk] pyCraft library unmaintained or incompatible** → Mitigation: Abstract protocol layer allows swapping to mineflayer or alternative if needed. Monitor pyCraft releases.
-
-**[Trade-off] Python-native (pyCraft) vs Node.js (mineflayer)** → Chose Python for simpler integration with PyTorch stack, but mineflayer has larger community. Acceptable trade-off for reduced complexity.
-
-**[Trade-off] Single-agent focus vs multi-agent architecture** → Designing for single agent now, but modular architecture allows future multi-agent extension. Acceptable to defer complexity.
-
-## Open Questions
-
-- How to handle server-side events (chat messages, player interactions, death)?
-- Should agent respond to chat commands from server admins?
-- How to specify goals for server deployment (text description, target coordinates, item collection)?
-- What metrics to log for server deployment (success rate, distance traveled, items collected)?
-- How to handle server restarts (scheduled maintenance) vs unexpected crashes?
+- **[Observation fidelity]** Rendered frames from chunk data won't match MineStudio's pixel-perfect rendering → Mitigation: Keep render distance short, focus on block-level accuracy. Fine-tuning on server-collected data can close the gap later.
+- **[pyCraft version compatibility]** pyCraft may lag behind newest Minecraft versions → Mitigation: Target a stable Minecraft version (1.20.x) and pin pyCraft version. Version negotiation at connection time.
+- **[Network latency]** High latency causes observation-action delay, degrading planner performance → Mitigation: Action throttler decouples planner timing from network. Log latency metrics for monitoring.
+- **[Authentication complexity]** Microsoft OAuth flow requires browser interaction for initial token → Mitigation: Token caching for session reuse. Offline mode available for local testing.
+- **[Safety filter completeness]** Unknown edge cases in block interaction (e.g., TNT chains, water flow) → Mitigation: Conservative default filters, configurable per-deployment, comprehensive logging for post-hoc analysis.

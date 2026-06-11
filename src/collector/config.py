@@ -12,6 +12,7 @@ class CollectorConfig:
     jpeg_quality: int = 85
     buffer_size: int = 1000
     output_dir: str = "output"
+    max_steps: int = 0  # 0 = unlimited, otherwise max steps per episode
 
 
 def load_config(path: str) -> CollectorConfig:

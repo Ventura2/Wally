@@ -46,6 +46,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Action keys in order (overrides config).",
     )
+    parser.add_argument(
+        "--shard-start",
+        type=int,
+        default=1,
+        help="Starting shard number (default: 1).",
+    )
     return parser.parse_args(argv)
 
 
@@ -82,6 +88,7 @@ def main(argv: list[str] | None = None) -> None:
         output_dir=args.output,
         action_schema=action_schema,
         episodes_per_shard=episodes_per_shard,
+        shard_start=args.shard_start,
     )
 
     logger.info(

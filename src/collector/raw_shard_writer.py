@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import json
+import numpy as np
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -110,7 +111,8 @@ class RawShardWriter:
             "frame_skip": transition.get("frame_skip", 1),
             "seed": transition.get("seed"),
         }
-        return json.dumps(sidecar).encode("utf-8")
+        return json.dumps(sidecar, default=_numpy_default).encode("utf-8")
+
 
     def _add_member(self, name: str, data: bytes) -> None:
         if self._tar is None:
@@ -118,3 +120,13 @@ class RawShardWriter:
         info = tarfile.TarInfo(name=name)
         info.size = len(data)
         self._tar.addfile(info, io.BytesIO(data))
+
+
+def _numpy_default(obj: object) -> object:
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")

@@ -62,6 +62,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Buffer size before flush (default: 1000).",
     )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Max steps per episode (default: unlimited).",
+    )
     return parser.parse_args(argv)
 
 
@@ -86,6 +92,8 @@ def main(argv: list[str] | None = None) -> None:
         config.resize = tuple(args.resize)
     if args.buffer_size is not None:
         config.buffer_size = args.buffer_size
+    if args.max_steps is not None:
+        config.max_steps = args.max_steps
 
     logger.info(
         "Collecting %d episodes (output=%s, frame_skip=%d, resize=%s)",

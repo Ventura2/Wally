@@ -157,6 +157,14 @@ class Trainer:
 
                 # Logging
                 if self.global_step % self.log_interval == 0:
+                    logger.info(
+                        "Step %d | prediction_loss=%.4f | sigreg_loss=%.4f | total_loss=%.4f | lr=%.6f",
+                        self.global_step,
+                        metrics.get("prediction_loss", 0),
+                        metrics.get("sigreg_loss", 0),
+                        metrics.get("total_loss", 0),
+                        metrics.get("learning_rate", 0),
+                    )
                     log_metrics(metrics, self.global_step)
 
                 # Checkpointing

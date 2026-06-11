@@ -1,29 +1,31 @@
 ## Why
 
-The trained LeWorldModel planner currently operates in local MineStudio environments for evaluation and data collection. To enable persistent, autonomous gameplay in multi-player settings and demonstrate real-world capability, we need to deploy the agent to live Minecraft servers. This bridges the gap between controlled evaluation and practical deployment.
+The agent can plan and act in MineStudio's local environment, but cannot join a real Minecraft server. Deploying to a live server is the ultimate validation of the trained world model and planner — it proves the agent can operate in uncontrolled, multi-player environments with network latency, server-side physics, and real-world consequences.
 
 ## What Changes
 
-- Add server connector to join Minecraft servers (support for vanilla/Paper/Spigot/Fabric via protocol bridge like mineflayer or MineStudio server mode)
-- Implement session manager for persistent connections (join, reconnect on disconnect, heartbeat)
-- Add action throttler to respect server tick rate (20 TPS) and prevent action spam
-- Implement graceful shutdown (save state, clean disconnect)
-- Add server authentication support (Microsoft accounts, offline mode)
-- Create deployment CLI entry point (`wally-deploy`) for launching agents on servers
-- Add safety mechanisms (action cooldowns, no-griefing rules, configurable behavior bounds)
+- Add `ServerConnector` wrapping pyCraft for Minecraft protocol, authentication (Microsoft OAuth + offline mode), and connection state management
+- Add `SessionManager` for session lifecycle: join, reconnect with exponential backoff, heartbeat, graceful shutdown
+- Add `ActionThrottler` — async queue-based rate limiter at 20 TPS (50ms/action) with adaptive timing for server lag
+- Add `ActionExecutor` translating continuous `(25,)` action vectors to Minecraft protocol packets (movement, block interaction, inventory)
+- Add `SafetyFilter` with configurable guards: bedrock breaking, lava interaction, void fall, action cooldowns
+- Add `ServerEnv` adapter that reads observations from the server connection, satisfying the same interface as `MineStudioAgentEnv` so `AgentLoop` works unchanged
+- Add `DeployConfig` (Pydantic) and `wally-deploy` CLI entry point
+- Add structured logging, position tracking, and state persistence for reconnection
 
 ## Capabilities
 
 ### New Capabilities
-- `minecraft-server-deployment`: Server connector, session management, action throttling, and deployment CLI for running trained agents on live Minecraft servers
+- `server-deployment`: Full Minecraft server agent deployment — connection, authentication, session persistence, action throttling, action execution, safety filtering, and CLI orchestration via pyCraft
 
 ### Modified Capabilities
-<!-- No existing capabilities require spec-level changes -->
+
+_None. The existing `minecraft-environment-integration` capability (AgentLoop, PlannerProtocol) is consumed as-is through the ServerEnv adapter._
 
 ## Impact
 
-- **Code**: New `src/deployer/` package with server connector, session manager, and action throttler
-- **CLI**: New `wally-deploy` entry point in `src/wally/cli/`
-- **Dependencies**: May require `mineflayer` (Node.js) or Python Minecraft protocol library (e.g., `minecraft.py`, `pyCraft`)
-- **Infrastructure**: Requires access to Minecraft server (local or remote) for testing
-- **Integration**: Depends on trained LeWorldModel checkpoints and planner from `minecraft-latent-planner` capability
+- **New dependency**: `pyCraft` (Minecraft protocol library) added to `pyproject.toml`
+- **New package**: `src/deployer/` with ~7 modules
+- **New CLI entry point**: `wally-deploy` registered in `pyproject.toml`
+- **Dependencies on existing capabilities**: `minecraft-environment-integration` (AgentLoop, PlannerProtocol, TrajectoryBuffer), `hierarchical-planning` (HierarchicalPlanner), `mpc-cem-planner` / `gradient-mpc` (low-level planning)
+- **No breaking changes** to existing code — purely additive

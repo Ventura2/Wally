@@ -68,11 +68,19 @@ class TrajectoryCollector:
                 self.recorder.start_episode()
                 done = False
 
+                step_in_ep = 0
                 while not done and not self._shutdown_requested:
                     action = self._sample_action()
                     transition = self.recorder.record_step(self.env, action)
                     self.buffer.add(transition)
                     done = transition["done"]
+                    step_in_ep += 1
+                    if self.config.max_steps > 0 and step_in_ep >= self.config.max_steps:
+                        logger.info(
+                            "Reached max_steps (%d), ending episode",
+                            self.config.max_steps,
+                        )
+                        break
 
                 episodes_completed += 1
                 logger.info(

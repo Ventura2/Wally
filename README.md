@@ -7,7 +7,7 @@ Wally collects gameplay trajectories from Minecraft (via [MineStudio](https://gi
 ## Pipeline
 
 ```
-Collect → Convert → Train → Deploy
+Collect → Convert → Train → Play → Deploy
 ```
 
 | Step | Package | What it does |
@@ -16,6 +16,7 @@ Collect → Convert → Train → Deploy
 | **Convert** | `src/wally/data/converter.py` | Reassembles per-step shards into episode sequences (`.npz` files with frames + actions arrays) for training. |
 | **Validate** | `src/validator/` | CLI + API for inspecting shard stats, validating schema/JPEG integrity, and extracting sample frames. |
 | **Train** | `src/wally/` | Trains a LeWorldModel (ViT encoder + causal Transformer predictor + SIGReg) on converted shards. |
+| **Play** | `src/agent/` | Runs a goal-conditioned agent loop locally via MineStudio — plan, execute, observe, repeat — with warm-start CEM replanning and trajectory recording. |
 | **Deploy** | `src/deployer/` | Runs trained agent on Minecraft — locally via MineStudio or on a live server via network protocol. |
 
 ## Concepts
@@ -73,7 +74,7 @@ wally-convert --input data/raw --output data/shards --config configs/converter_d
 ```bash
 wally-validate inspect data/shards/
 wally-validate validate data/shards/
-wally-validate samples data/shards/ --num 5 --output samples/
+wally-validate samples data/shards/ --count 5 --output-dir samples/
 ```
 
 ## Running the full pipeline
@@ -156,7 +157,8 @@ wally-collect --episodes 100 --output-dir data/raw \
 Or via a YAML config:
 
 ```bash
-wally-collect --config configs/collector_default.yaml
+# Create your own config file based on collector/config.py defaults
+wally-collect --config configs/collector.yaml
 ```
 
 **Requirements**: Minecraft Java server must be running and accessible (default `localhost:25565`).
@@ -298,87 +300,124 @@ wally-train-curriculum \
     --patience 5
 ```
 
-### Step 5: Deploy
+### Step 5: Play (local agent loop)
 
-Once trained, deploy the agent to play Minecraft autonomously. Two deployment paths are available:
-
-#### Path A: Local Evaluation (MineStudio)
-
-Run the agent in a local MineStudio environment for development, testing, and benchmarking.
+Run a goal-conditioned agent locally via MineStudio. The agent plans, executes, observes, and replans in a loop:
 
 ```bash
-wally-deploy --checkpoint checkpoints/checkpoint_10000.pt --mode local --goal "collect_wood"
+wally-play --checkpoint checkpoints/model.pt \
+    --goal-frame goals/collect_wood.png \
+    --record --output-dir data/recordings
 ```
 
-**Use when:**
-- Developing and tuning the planner
-- Running benchmarks and evaluations
-- Debugging agent behavior
-- Fast iteration without server setup
+The agent loop:
+- Plans action sequences using a trained world model (CEM-based MPC)
+- Executes actions in the environment at fixed intervals
+- Replans with warm-start (shifts previous plan, reuses CEM samples)
+- Records trajectories for analysis or retraining
+- Supports both flat and hierarchical planners (`--planner hierarchical`)
 
-**Features:**
-- Direct environment access (no network latency)
-- Synchronous execution
-- Full access to environment state
-- Reproducible results
+### Step 6: Deploy
 
-#### Path B: Live Server Deployment
+Once trained, deploy the agent to play Minecraft autonomously on a live server.
 
-Deploy the agent to a live Minecraft server (vanilla, Paper, Spigot, Fabric) for persistent, multi-player gameplay.
+#### Basic usage
+
+Deploy to a local offline-mode server:
 
 ```bash
-wally-deploy --checkpoint checkpoints/checkpoint_10000.pt --mode server \
-    --server localhost:25565 --username WallyAgent --offline
+wally-deploy --server localhost:25565 \
+    --checkpoint checkpoints/checkpoint_10000.pt \
+    --goal-frame goals/collect_wood.png
 ```
 
-Or with Microsoft account authentication:
+Deploy to an online-mode server with Microsoft authentication:
 
 ```bash
-wally-deploy --checkpoint checkpoints/checkpoint_10000.pt --mode server \
-    --server play.example.com --auth microsoft
+wally-deploy --server play.example.com:25565 \
+    --checkpoint checkpoints/checkpoint_10000.pt \
+    --goal-frame goals/collect_wood.png
 ```
 
-**Use when:**
-- Watching the agent play in real-time (spectate from the server)
-- Multi-player environments
-- Persistent autonomous gameplay
-- Demonstrating agent capabilities
+The agent will:
+- Connect to the server and authenticate
+- Reconstruct first-person observations from chunk data
+- Plan actions using the trained world model
+- Execute actions at 20 TPS with safety filters
+- Automatically reconnect on disconnect
+- Save state for session persistence
 
-**Features:**
-- Network protocol via pyCraft (Minecraft 1.8-1.20+)
-- Automatic reconnection on disconnect
-- Action throttling (20 TPS)
-- Safety bounds (configurable)
-- Session persistence and state recovery
+#### Recording trajectories
 
-**Configuration:**
+Record the agent's gameplay for analysis or retraining:
+
+```bash
+wally-deploy --server localhost:25565 \
+    --checkpoint checkpoints/checkpoint_10000.pt \
+    --goal-frame goals/collect_wood.png \
+    --record \
+    --output-dir data/recordings
+```
+
+**Output**: `data/recordings/episode_0.npz` — trajectory files in NumPy format.
+
+#### Configuration
 
 Use a YAML config for advanced options:
 
 ```yaml
 # deploy_config.yaml
-mode: server
-checkpoint: checkpoints/checkpoint_10000.pt
-server:
-  address: localhost:25565
-  auth: offline  # or "microsoft"
-  username: WallyAgent
-agent:
-  goal: "collect_wood"
-  replan_interval: 20  # steps
+server_host: localhost
+server_port: 25565
+auth_mode: offline  # or "online" for Microsoft auth
+username: WallyAgent
+checkpoint_path: checkpoints/checkpoint_10000.pt
+goal_frame_path: goals/collect_wood.png
+render_distance: 4
+
 safety:
-  prevent_bedrock_break: true
+  prevent_bedrock_breaking: true
   prevent_lava_interaction: true
-  action_cooldown_ms: 50
+  prevent_void_fall: true1
+  void_threshold: -64.0
+  action_cooldown_ms: 100
+
+reconnect:
+  max_attempts: 10
+  initial_backoff_s: 1.0
+  max_backoff_s: 60.0
+
+log_dir: logs/deploy
+log_to_stdout: false
+record_trajectory: false
+output_dir: data/recordings
 ```
 
 ```bash
 wally-deploy --config deploy_config.yaml
 ```
 
-**Which path to choose?**
+CLI arguments override config file values:
 
-Start with **Path A (Local)** for development and testing. When ready to see the agent play in a real Minecraft world or interact with other players, deploy to a **Path B (Live Server)**.
+```bash
+wally-deploy --config deploy_config.yaml --server prod.example.com:25565
+```
+
+#### Features
+
+- **Network protocol**: pyCraft (Minecraft Java Edition 1.8-1.20+)
+- **Authentication**: Offline mode (username-only) or online mode (Microsoft OAuth with token caching)
+- **Automatic reconnection**: Exponential backoff (1s → 2s → 4s → ... → 60s max), up to 10 attempts
+- **Action throttling**: 20 TPS rate limiting with adaptive timing for lagging servers
+- **Safety filters**: Bedrock breaking prevention, lava interaction prevention, void fall prevention, action cooldowns
+- **Session persistence**: Position, inventory, and goal progress saved to checkpoint file
+- **Structured logging**: JSON logs with rotation, action tracking, position monitoring
+- **Graceful shutdown**: SIGINT/SIGTERM handlers save state before disconnecting
+
+#### Which deployment path to choose?
+
+- **Local evaluation** (via `wally-play`): Use for development, testing, and benchmarking in MineStudio's local environment
+- **Live server deployment** (via `wally-deploy`): Use for real Minecraft servers, multi-player environments, and persistent autonomous gameplay
 
 ## Tests
 
@@ -399,7 +438,7 @@ uv run mypy
 ```
 src/
   collector/     # env wrapper, recorder, buffer, config, raw_shard_writer
-  deployer/      # server connector, session manager, action throttler, safety filter
+  deployer/      # server connector, auth, session manager, action throttler, executor, frame renderer, safety filters, ServerEnv adapter, logging, shutdown, CLI
   exporter/      # ShardWriter, manifest generation (legacy, used by tests)
   validator/     # shard inspection, validation, sample extraction
   wally/         # LeWorldModel training pipeline
@@ -409,6 +448,7 @@ src/
     config/      # TrainConfig, ModelConfig, YAML loader
     planner/     # CEM, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
     cli/         # wally-train, wally-convert, wally-collect, wally-train-curriculum entry points
+  agent/         # goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
 configs/         # example YAML configs
 tests/           # unit tests + end-to-end integration test
 ```
