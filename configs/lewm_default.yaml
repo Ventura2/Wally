@@ -19,7 +19,7 @@ training:
   use_amp: false
   checkpoint_interval: 1000
   log_interval: 10
-  data_dir: /workspace/data/shards/chunks
+  data_dir: data/shards/chunks
   output_dir: checkpoints
   num_workers: 0
   skip_short: true
