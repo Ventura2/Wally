@@ -32,6 +32,7 @@ checkpoints/
 logs/
 *.log
 *.err
+*.err.*
 *.out
 
 # Build artifacts
