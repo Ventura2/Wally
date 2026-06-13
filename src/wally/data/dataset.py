@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,13 @@ def decode_sample(sample: dict[str, Any]) -> dict[str, Any]:
         frames = frames.to(torch.uint8)
     if actions.dtype != torch.float32:
         actions = actions.to(torch.float32)
+
+    # Clamp continuous actions to a sane range. The data has discrete binary
+    # actions (0/1) plus continuous camera deltas (camera_pitch, camera_yaw) that
+    # can be very large (observed range -42 to +37). Large values destabilize
+    # the predictor transformer. Clamp to [-1, 1] which covers typical camera
+    # deltas well (99th percentile of observed distribution).
+    actions = actions.clamp(-1.0, 1.0)
 
     return {"frames": frames, "actions": actions}
 
@@ -125,16 +133,32 @@ def build_pipeline(
         dataset = dataset.shuffle(100)
 
     dataset = dataset.decode()
-
-    def process(sample: dict[str, Any]) -> dict[str, torch.Tensor] | None:
-        decoded = decode_sample(sample)
-        frames = preprocess_frames(decoded["frames"])
-        actions = decoded["actions"]
-        return sample_subsequence(
-            frames, actions, seq_length=seq_length, skip_short=skip_short
-        )
-
-    dataset = dataset.map(process)
-    dataset = dataset.select(lambda x: x is not None)
+    dataset = dataset.map(
+        partial(_process_sample, seq_length=seq_length, skip_short=skip_short)
+    )
+    dataset = dataset.select(_is_not_none)
 
     return dataset
+
+
+def _process_sample(
+    sample: dict[str, Any],
+    seq_length: int = 16,
+    skip_short: bool = True,
+) -> dict[str, torch.Tensor] | None:
+    """Module-level worker-safe decode + preprocess + subsample.
+
+    Must be at module scope so it can be pickled when DataLoader uses
+    num_workers > 0 on Windows (spawn-based multiprocessing).
+    """
+    decoded = decode_sample(sample)
+    frames = preprocess_frames(decoded["frames"])
+    actions = decoded["actions"]
+    return sample_subsequence(
+        frames, actions, seq_length=seq_length, skip_short=skip_short
+    )
+
+
+def _is_not_none(sample: dict[str, torch.Tensor] | None) -> bool:
+    """Module-level worker-safe filter (replaces inline lambda)."""
+    return sample is not None

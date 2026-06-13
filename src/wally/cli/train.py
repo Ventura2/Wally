@@ -10,7 +10,7 @@ import torch
 from wally.config.loader import load_config
 from wally.data.dataloader import create_dataloader
 from wally.models.lewm import LeWorldModel
-from wally.training.sigreg import SIGRegCritic
+from wally.training.sigreg import SIGReg
 from wally.training.trainer import Trainer
 
 logger = logging.getLogger(__name__)
@@ -73,9 +73,13 @@ def main(argv: list[str] | None = None) -> None:
         dropout=model_config.dropout,
         action_dim=model_config.action_dim,
         pretrained=model_config.pretrained,
+        encoder_type=model_config.encoder_type,
     )
 
-    critic = SIGRegCritic(embed_dim=model_config.embed_dim)
+    sigreg = SIGReg(
+        num_proj=train_config.sigreg_num_proj,
+        knots=train_config.sigreg_knots,
+    )
 
     dataloader = create_dataloader(
         data_dir=train_config.data_dir,
@@ -83,12 +87,14 @@ def main(argv: list[str] | None = None) -> None:
         num_workers=train_config.num_workers,
         seq_length=train_config.seq_length,
         skip_short=train_config.skip_short,
+        persistent_workers=train_config.persistent_workers,
+        prefetch_factor=train_config.prefetch_factor,
     )
 
     config_dict = train_config.to_dict()
     config_dict["device"] = device
 
-    trainer = Trainer(model, critic, dataloader, config_dict)
+    trainer = Trainer(model, sigreg, dataloader, config_dict)
 
     if args.resume:
         trainer.resume(args.resume)

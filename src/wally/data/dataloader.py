@@ -30,6 +30,8 @@ def create_dataloader(
     seq_length: int = 16,
     skip_short: bool = True,
     pin_memory: bool | None = None,
+    persistent_workers: bool = False,
+    prefetch_factor: int = 2,
 ) -> torch.utils.data.DataLoader:
     """Create a DataLoader for WebDataset shard files.
 
@@ -39,6 +41,9 @@ def create_dataloader(
         num_workers: number of data loading workers.
         seq_length: subsequence length to extract.
         skip_short: if True, skip trajectories shorter than seq_length.
+        pin_memory: whether to pin host memory for async CUDA transfers.
+        persistent_workers: if True, keep workers alive between epochs.
+        prefetch_factor: number of batches prefetched per worker.
 
     Returns:
         PyTorch DataLoader yielding batches of frames and actions.
@@ -57,4 +62,6 @@ def create_dataloader(
         batch_size=None,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
+        prefetch_factor=prefetch_factor,
     )

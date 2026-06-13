@@ -13,3 +13,4 @@ class ModelConfig:
     dropout: float = 0.1
     action_dim: int = 25
     pretrained: bool = True
+    encoder_type: str = "vit"  # "vit" or "cnn"

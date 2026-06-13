@@ -1,20 +1,25 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.optimizer import Optimizer
+
+logger = logging.getLogger(__name__)
 
 
 def save_checkpoint(
     path: str | Path,
     model: nn.Module,
     optimizer: Optimizer,
-    critic_optimizer: Optimizer,
     global_step: int,
     config: dict[str, Any],
+    *,
+    scheduler: LRScheduler | None = None,
 ) -> None:
     """Save training checkpoint.
 
@@ -22,27 +27,27 @@ def save_checkpoint(
         path: File path for the checkpoint.
         model: Main model.
         optimizer: Main model optimizer.
-        critic_optimizer: SIGReg critic optimizer.
         global_step: Current training step.
         config: Training configuration dict to embed in checkpoint.
+        scheduler: Optional LR scheduler to persist.
     """
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "critic_optimizer_state_dict": critic_optimizer.state_dict(),
-            "global_step": global_step,
-            "config": config,
-        },
-        path,
-    )
+    payload: dict[str, Any] = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "global_step": global_step,
+        "config": config,
+    }
+    if scheduler is not None:
+        payload["scheduler_state_dict"] = scheduler.state_dict()
+    torch.save(payload, path)
 
 
 def load_checkpoint(
     path: str | Path,
     model: nn.Module,
     optimizer: Optimizer | None = None,
-    critic_optimizer: Optimizer | None = None,
+    *,
+    scheduler: LRScheduler | None = None,
 ) -> int:
     """Load training checkpoint and restore states.
 
@@ -50,7 +55,7 @@ def load_checkpoint(
         path: Checkpoint file path.
         model: Main model to restore.
         optimizer: Main model optimizer to restore (optional).
-        critic_optimizer: SIGReg critic optimizer to restore (optional).
+        scheduler: Optional LR scheduler to restore.
 
     Returns:
         The saved global_step.
@@ -61,7 +66,16 @@ def load_checkpoint(
     if optimizer is not None and "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-    if critic_optimizer is not None and "critic_optimizer_state_dict" in checkpoint:
-        critic_optimizer.load_state_dict(checkpoint["critic_optimizer_state_dict"])
+    if scheduler is not None:
+        if "scheduler_state_dict" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        else:
+            global_step = int(checkpoint.get("global_step", 0))
+            scheduler.last_epoch = global_step - 1
+            logger.info(
+                "legacy checkpoint: scheduler state not found, "
+                "initializing at last_epoch=%d",
+                global_step - 1,
+            )
 
-    return checkpoint["global_step"]
+    return int(checkpoint["global_step"])

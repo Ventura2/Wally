@@ -12,12 +12,16 @@ class TrainConfig:
     batch_size: int = 8
     seq_length: int = 16
     alpha: float = 0.1
+    sigreg_num_proj: int = 1024
+    sigreg_knots: int = 17
     use_amp: bool = False
     checkpoint_interval: int = 1000
     log_interval: int = 10
     data_dir: str = "data/shards"
     output_dir: str = "checkpoints"
     num_workers: int = 4
+    persistent_workers: bool = False
+    prefetch_factor: int = 2
     skip_short: bool = True
     wandb_project: str = "wally"
     resume_from: str | None = None

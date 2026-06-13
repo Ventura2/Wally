@@ -1,71 +1,58 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 
 
-class SIGRegCritic(nn.Module):
-    """MLP critic for SIGReg mutual information estimation.
+class SIGReg(nn.Module):
+    """Sketch Isotropic Gaussian Regularization (Epps-Pulley statistic).
 
-    Takes concatenated (predicted, target) latents and outputs a scalar score.
-    Architecture: embed_dim*2 → hidden_dim → hidden_dim → 1
+    Computes a non-negative statistic measuring deviation of an embedding
+    distribution from an isotropic Gaussian. The statistic is estimated by
+    applying random unit-norm projections to the input and comparing the
+    empirical characteristic function of the projected scalars against the
+    Gaussian target phi(t) = exp(-t^2 / 2).
+
+    Ported from lucas-maes/le-wm (module.py:8-37). The module exposes no
+    learnable parameters: the projection matrix is resampled on every call,
+    so gradients flow through the encoder embeddings but never into the
+    projection itself.
+
+    The output is non-negative and finite for any finite input embedding,
+    including degenerate cases (all-zeros, constant vectors).
     """
 
-    def __init__(self, embed_dim: int, hidden_dim: int = 256) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(embed_dim * 2, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-        )
+    t: Tensor
+    phi: Tensor
+    weights: Tensor
 
-    def forward(self, predicted: Tensor, target: Tensor) -> Tensor:
-        """
+    def __init__(self, knots: int = 17, num_proj: int = 1024) -> None:
+        super().__init__()
+        self.knots = knots
+        self.num_proj = num_proj
+        t = torch.linspace(0, 3, knots, dtype=torch.float32)
+        dt = 3 / (knots - 1)
+        weights = torch.full((knots,), 2 * dt, dtype=torch.float32)
+        weights[[0, -1]] = dt
+        window = torch.exp(-t.square() / 2.0)
+        self.register_buffer("t", t)
+        self.register_buffer("phi", window)
+        self.register_buffer("weights", weights * window)
+
+    def forward(self, proj: Tensor) -> Tensor:
+        """Compute the Epps-Pulley statistic on input embeddings.
+
         Args:
-            predicted: (..., embed_dim)
-            target:    (..., embed_dim)
+            proj: Tensor of shape (T, B, D) (time, batch, dimension) per the
+                le-wm convention.
 
         Returns:
-            Scalar scores (..., 1)
+            Scalar non-negative tensor measuring deviation from an isotropic
+            Gaussian.
         """
-        x = torch.cat([predicted, target], dim=-1)
-        return self.net(x)
-
-
-def sigreg_loss(
-    critic: SIGRegCritic,
-    predicted: Tensor,
-    target: Tensor,
-) -> Tensor:
-    """SIGReg loss for mutual information estimation.
-
-    Estimates MI between predicted and target latents. The loss is formulated
-    so that minimizing it encourages the model to produce predictions that
-    share high mutual information with targets.
-
-    Joint score: critic on real (predicted, target) pairs
-    Marginal score: critic on (predicted, shuffled_target) pairs
-    loss = mean(marginal_scores) - mean(joint_scores)
-
-    Args:
-        critic:    SIGRegCritic network
-        predicted: (B, T-1, embed_dim)
-        target:    (B, T-1, embed_dim)
-
-    Returns:
-        Scalar SIGReg loss.
-    """
-    # joint: real pairs
-    joint_scores = critic(predicted, target)
-
-    # marginal: shuffle target across batch dimension (dim=0)
-    perm = torch.randperm(target.size(0), device=target.device)
-    shuffled_target = target[perm]
-    marginal_scores = critic(predicted, shuffled_target)
-
-    # loss = mean(marginal) - mean(joint)
-    # minimizing this encourages high MI (large joint - marginal)
-    return marginal_scores.mean() - joint_scores.mean()
+        A = torch.randn(proj.size(-1), self.num_proj, device=proj.device)
+        A = A.div_(A.norm(p=2, dim=0))
+        x_t = (proj @ A).unsqueeze(-1) * self.t
+        err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
+        statistic = (err @ self.weights) * proj.size(-2)
+        return statistic.mean()
