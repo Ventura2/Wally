@@ -22,10 +22,8 @@ class LeWorldModelAdapter:
 
     def predict(self, z: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         z_seq = z.unsqueeze(1)
-        a_seq = action.unsqueeze(1)
-        a_emb = self._model.action_embedder(a_seq)
-        interleaved = torch.cat([z_seq, a_emb], dim=1)
-        predicted = self._model.predictor(interleaved)
+        a_emb = self._model.action_embedder(action.unsqueeze(1))
+        predicted = self._model.predictor(z_seq, a_emb)
         return predicted.squeeze(1)
 
     @property

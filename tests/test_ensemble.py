@@ -77,7 +77,7 @@ class TestEnsembleTraining:
 
         for _ in range(100):
             optimizer.zero_grad()
-            a_emb = model.action_embedder(actions)
+            a_emb = model._embed_actions(actions)
             total = torch.tensor(0.0)
             for member in model.members:
                 pred = member(latents, a_emb)

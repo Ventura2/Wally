@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import torch
-import pytest
 
-from wally.models.encoder import ViTEncoder
-from wally.models.action_embedder import ActionEmbedder
-from wally.models.predictor import CausalTransformerPredictor
-from wally.models.lewm import LeWorldModel
 from wally.config.model import ModelConfig
+from wally.models.embedder import Embedder
+from wally.models.encoder import ViTEncoder
+from wally.models.lewm import LeWorldModel
+from wally.models.predictor import ARPredictor
 
 
 class TestViTEncoder:
@@ -36,19 +35,19 @@ class TestViTEncoder:
 
 class TestActionEmbedder:
     def test_output_shape(self):
-        embedder = ActionEmbedder(action_dim=25, embed_dim=192)
+        embedder = Embedder(input_dim=25, smoothed_dim=192, emb_dim=192, mlp_scale=4)
         actions = torch.randn(4, 16, 25)
         out = embedder(actions)
         assert out.shape == (4, 16, 192)
 
     def test_different_dims(self):
-        embedder = ActionEmbedder(action_dim=10, embed_dim=64)
+        embedder = Embedder(input_dim=10, smoothed_dim=64, emb_dim=64, mlp_scale=4)
         actions = torch.randn(2, 8, 10)
         out = embedder(actions)
         assert out.shape == (2, 8, 64)
 
     def test_gradient_flows(self):
-        embedder = ActionEmbedder(action_dim=25, embed_dim=192)
+        embedder = Embedder(input_dim=25, smoothed_dim=192, emb_dim=192, mlp_scale=4)
         actions = torch.randn(2, 4, 25, requires_grad=True)
         out = embedder(actions)
         out.sum().backward()
@@ -57,21 +56,37 @@ class TestActionEmbedder:
 
 class TestCausalTransformerPredictor:
     def test_output_shape(self):
-        predictor = CausalTransformerPredictor(embed_dim=192, depth=2, num_heads=4)
-        x = torch.randn(4, 32, 192)  # 2*T interleaved
-        out = predictor(x)
-        assert out.shape == (4, 16, 192)  # even positions = T predictions
+        predictor = ARPredictor(
+            input_dim=192, depth=2, num_heads=4, c_dim=192, num_frames=16
+        )
+        x = torch.randn(4, 16, 192)
+        c = torch.randn(4, 16, 192)
+        out = predictor(x, c)
+        assert out.shape == (4, 16, 192)
 
     def test_causal_masking(self):
-        predictor = CausalTransformerPredictor(embed_dim=64, depth=1, num_heads=4)
-        x = torch.randn(1, 10, 64)
-        out = predictor(x)
-        assert out.shape == (1, 5, 64)
+        predictor = ARPredictor(
+            input_dim=64, depth=1, num_heads=4, c_dim=64, num_frames=8
+        )
+        x = torch.randn(1, 8, 64)
+        c = torch.randn(1, 8, 64)
+        out1 = predictor(x, c).clone()
+        assert out1.shape == (1, 8, 64)
+
+        x[:, 4:, :] = torch.randn_like(x[:, 4:, :])
+        out2 = predictor(x, c)
+        assert torch.allclose(out1[:, :4, :], out2[:, :4, :]), (
+            "perturbing x at positions 4+ must not change output at "
+            "positions 0-3 (causal masking)"
+        )
 
     def test_gradient_flows(self):
-        predictor = CausalTransformerPredictor(embed_dim=64, depth=1, num_heads=4)
+        predictor = ARPredictor(
+            input_dim=64, depth=1, num_heads=4, c_dim=64, num_frames=8
+        )
         x = torch.randn(2, 8, 64, requires_grad=True)
-        out = predictor(x)
+        c = torch.randn(2, 8, 64)
+        out = predictor(x, c)
         out.sum().backward()
         assert x.grad is not None
 

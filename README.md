@@ -215,27 +215,33 @@ Copy and edit `configs/lewm_default.yaml`:
 model:
   vit_variant: vit_tiny_patch16_224
   embed_dim: 192
-  depth: 6
+  depth: 4
   num_heads: 4
   mlp_ratio: 4.0
   dropout: 0.1
   action_dim: 25
-  pretrained: true
+  pretrained: false
+  encoder_type: cnn        # "cnn" (default, stable on RDNA2) or "vit" (timm ViT-Tiny)
 
 training:
   lr: 0.0001
   weight_decay: 0.00001
-  warmup_steps: 1000
+  warmup_steps: 500
   max_steps: 100000
-  batch_size: 8
+  batch_size: 16
   seq_length: 16
-  alpha: 0.1              # SIGReg loss weight
-  use_amp: false           # mixed precision (fp16)
+  alpha: 0.1              # SIGReg loss weight (LeWM paper Section 3.1)
+  sigreg_num_proj: 1024   # random projections for closed-form SIGReg
+  sigreg_knots: 17        # knots for Epps-Pulley integration grid
+  use_amp: true            # mixed precision (bfloat16 by default, fp16 optional)
+  amp_dtype: bfloat16      # autocast dtype; use "float16" for GradScaler path
   checkpoint_interval: 1000
-  log_interval: 10
-  data_dir: data/shards
+  log_interval: 100
+  data_dir: data/shards/chunks
   output_dir: checkpoints
-  num_workers: 4
+  num_workers: 8
+  persistent_workers: true
+  prefetch_factor: 4
   skip_short: true         # skip trajectories shorter than seq_length
   wandb_project: wally
 ```
@@ -244,17 +250,23 @@ training:
 
 | Output | Location | Description |
 |---|---|---|
-| **Checkpoints** | `checkpoints/checkpoint_<step>.pt` | Model + optimizer + SIGReg critic state dicts, step count, config. Saved every `checkpoint_interval` steps and at end of training. |
+| **Checkpoints** | `checkpoints/checkpoint_<step>.pt` | Model + optimizer + scheduler state dicts, step count, config. Saved every `checkpoint_interval` steps and at end of training. |
 | **Wandb logs** | W&B dashboard | Prediction loss, SIGReg loss, total loss, learning rate — logged every `log_interval` steps. Set `wandb_project` in config. |
+
+#### Training stability
+
+The trainer applies a NaN/Inf guard: if `total_loss` is non-finite on a step, the optimizer update is skipped, a warning is logged, and `global_step` advances. Input batches are also sanitized with `torch.nan_to_num` before the forward pass. SIGReg uses the closed-form Epps-Pulley statistic (Epps & Pulley, 1983) on `num_proj` random unit-norm projections of the encoder embeddings — stateless, non-negative, finite for any finite input.
 
 #### Checkpoint contents
 
 Each checkpoint is a `.pt` file containing:
 - `model_state_dict` — LeWorldModel weights
 - `optimizer_state_dict` — AdamW optimizer state
-- `critic_optimizer_state_dict` — SIGReg critic optimizer state
+- `scheduler_state_dict` — LR scheduler state (cosine + warmup `last_epoch`); on resume, the LR schedule continues from this state instead of restarting warmup
 - `global_step` — training step at save time
 - `config` — full training config dict
+
+Checkpoints saved before the `lewm-adaln-predictor` change use a different model architecture (interleaved-input TransformerEncoder with default-affine LayerNorms) and cannot be loaded by the current code. They are archived in `checkpoints/_incompatible_pre_adaln/`. All new runs start from step 0.
 
 ### Step 4: Plan
 

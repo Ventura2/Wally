@@ -8,7 +8,7 @@ import torch.nn as nn
 import yaml
 from pydantic import BaseModel, field_validator
 
-from wally.models.action_embedder import ActionEmbedder
+from wally.models.embedder import Embedder
 from wally.models.encoder import ViTEncoder
 
 
@@ -68,7 +68,12 @@ class EnsembleWorldModel(nn.Module):
         super().__init__()
         self.config = config
         self.encoder = ViTEncoder(pretrained=False)
-        self.action_embedder = ActionEmbedder(config.action_dim, config.embed_dim)
+        self.action_embedder = Embedder(
+            input_dim=config.action_dim,
+            smoothed_dim=config.embed_dim,
+            emb_dim=config.embed_dim,
+            mlp_scale=4,
+        )
         hidden_dim = int(config.embed_dim * config.mlp_ratio)
         self.members = nn.ModuleList([
             _MLPPredictor(config.embed_dim, config.embed_dim, hidden_dim)
@@ -80,10 +85,16 @@ class EnsembleWorldModel(nn.Module):
         tokens = self.encoder(frames)
         return tokens.mean(dim=1)
 
+    def _embed_actions(self, action: torch.Tensor) -> torch.Tensor:
+        """Normalize action shape to (B, 1, action_dim) and run through the Embedder."""
+        if action.dim() == 2:
+            action = action.unsqueeze(1)
+        return self.action_embedder(action).squeeze(1)
+
     def predict_with_member(
         self, z: torch.Tensor, action: torch.Tensor, member_idx: int
     ) -> torch.Tensor:
-        a_emb = self.action_embedder(action)
+        a_emb = self._embed_actions(action)
         return self.members[member_idx](z, a_emb)
 
     def predict_with_uncertainty(
@@ -103,7 +114,7 @@ class EnsembleWorldModel(nn.Module):
         actions: torch.Tensor,
         target_latents: torch.Tensor,
     ) -> dict[str, float]:
-        a_emb = self.action_embedder(actions)
+        a_emb = self._embed_actions(actions)
         losses: dict[str, float] = {}
         total = 0.0
         for i, member in enumerate(self.members):

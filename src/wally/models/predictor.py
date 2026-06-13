@@ -3,53 +3,96 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from wally.models.lewm_blocks import ConditionalBlock, Transformer
 
-class CausalTransformerPredictor(nn.Module):
-    """Decoder-only Transformer with causal masking for next-latent prediction."""
+
+class ARPredictor(nn.Module):
+    """Action-conditioned causal Transformer predictor (LeWM official AdaLN-Zero).
+
+    Wraps the official ``Transformer`` with ``ConditionalBlock`` and a learnable
+    positional embedding. The forward signature is ``forward(x, c) -> (B, T, D)``
+    where:
+      - ``x``: projected encoder output of shape ``(B, T, input_dim)``
+      - ``c``: action-embedding sequence of shape ``(B, T, c_dim)``
+
+    The action-embedding sequence is consumed exclusively through AdaLN-Zero
+    modulation in the ``ConditionalBlock`` (NOT interleaved into ``x``). The
+    positional embedding is added to ``x`` before the first block; the
+    conditioning ``c`` is added separately via a learned projection inside the
+    ``Transformer`` (``cond_proj``).
+
+    The predictor runs in the same autocast context as the rest of the model
+    (bf16 by default). The internal ``nn.LayerNorm`` is ``elementwise_affine=False``
+    and the AdaLN-Zero modulation is zero-initialized, so the entire block is
+    a strict identity at step 0 — gradients are well-behaved from the first
+    step and the predictor contributes zero to the residual until the
+    modulation weights learn to grow.
+    """
 
     def __init__(
         self,
-        embed_dim: int = 192,
+        input_dim: int = 192,
+        hidden_dim: int | None = None,
+        output_dim: int | None = None,
+        c_dim: int = 192,
         depth: int = 6,
         num_heads: int = 4,
         mlp_ratio: float = 4.0,
         dropout: float = 0.1,
+        num_frames: int = 16,
     ) -> None:
         super().__init__()
-        self.embed_dim = embed_dim
+        if hidden_dim is None:
+            hidden_dim = input_dim
+        if output_dim is None:
+            output_dim = input_dim
 
-        layer = nn.TransformerDecoderLayer(
-            d_model=embed_dim,
-            nhead=num_heads,
-            dim_feedforward=int(embed_dim * mlp_ratio),
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.c_dim = c_dim
+        self.num_frames = num_frames
+
+        # Learnable positional embedding added to x before the Transformer.
+        # Shape (1, num_frames, input_dim) so it broadcasts over the batch.
+        self.pos_embedding = nn.Parameter(torch.zeros(1, num_frames, input_dim))
+        nn.init.trunc_normal_(self.pos_embedding, std=0.02)
+
+        self.transformer = Transformer(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
             dropout=dropout,
-            batch_first=True,
-            norm_first=True,
+            block_class=ConditionalBlock,
         )
-        self.decoder = nn.TransformerDecoder(layer, num_layers=depth)
-        self.norm = nn.LayerNorm(embed_dim)
 
-        # causal mask: upper-triangular True means "blocked"
-        mask = nn.Transformer.generate_square_subsequent_mask(1)  # placeholder
-        self.register_buffer("causal_mask", mask)
+        # The Transformer created its own input_proj and cond_proj. We need
+        # to rebuild cond_proj to use c_dim instead of input_dim (they may
+        # differ). The simplest way is to re-create the Transformer with
+        # c_dim-aware projections — but the official Transformer assumes
+        # cond_dim == input_dim. So we add an explicit c_proj that maps
+        # c_dim -> input_dim, and pass c_proj(c) as the conditioning.
+        self.c_proj = nn.Linear(c_dim, input_dim)
 
-    def _get_causal_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        return nn.Transformer.generate_square_subsequent_mask(seq_len, device=device)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: (B, 2*T, embed_dim) interleaved latent/action sequence.
+            x: (B, T, input_dim) projected encoder output.
+            c: (B, T, c_dim) action-embedding sequence.
 
         Returns:
-            (B, T, embed_dim) predicted latents at even (latent) positions.
+            (B, T, output_dim) predicted latents.
         """
-        seq_len = x.size(1)
-        mask = self._get_causal_mask(seq_len, x.device)
-
-        # self-attention with causal mask (no separate memory)
-        out = self.decoder(x, memory=x, tgt_mask=mask, memory_mask=mask)
-        out = self.norm(out)
-
-        # extract predictions at even indices (latent positions)
-        return out[:, 0::2, :]
+        T = x.size(1)
+        if T > self.num_frames:
+            raise ValueError(
+                f"input sequence length {T} exceeds configured num_frames "
+                f"{self.num_frames}; increase num_frames in the ARPredictor "
+                f"__init__ or truncate the input"
+            )
+        x = x + self.pos_embedding[:, :T, :]
+        c = self.c_proj(c)
+        return self.transformer(x, c)  # type: ignore[no-any-return]

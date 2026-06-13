@@ -26,11 +26,13 @@ data/shards/
 data/checkpoints/
 data/converted/
 checkpoints/
-models/
+/models/
 
 # Logs
 logs/
 *.log
+*.err
+*.out
 
 # Build artifacts
 dist/

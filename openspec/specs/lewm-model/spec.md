@@ -3,9 +3,7 @@
 ## Purpose
 
 LeWorldModel architecture: ViT Tiny encoder, action embedder, and causal Transformer predictor assembled into a single nn.Module for next-frame latent prediction.
-
 ## Requirements
-
 ### Requirement: ViT Tiny encoder
 The system SHALL provide a ViT Tiny encoder (`vit_tiny_patch16_224`) that encodes RGB frames of shape `(B, 3, 224, 224)` into latent token sequences of shape `(B, N_tokens, D_embed)`. The encoder SHALL be instantiated from `timm` with optional pretrained weights.
 
@@ -29,7 +27,7 @@ The system SHALL provide a causal (decoder-only) Transformer predictor that take
 - **THEN** actions SHALL be projected into the same embedding dimension as latents via a learned linear or embedding layer
 
 ### Requirement: LeWorldModel assembly
-The system SHALL provide a `LeWorldModel` class that composes the ViT encoder, action embedder, and Transformer predictor into a single `nn.Module`. The model SHALL expose a `forward(frames, actions)` method that returns predicted latents and encoded target latents.
+The system SHALL provide a `LeWorldModel` class that composes the encoder, a `projector` MLP, an `Embedder` action-embedder, an AdaLN-Zero `ConditionalBlock`-based Transformer predictor, and a `pred_proj` MLP into a single `nn.Module`. The model SHALL expose a `forward(frames, actions)` method that returns predicted latents and encoded target latents. When `return_embeddings=True`, the third returned tensor SHALL be the projected encoder output (the SIGReg input).
 
 #### Scenario: End-to-end forward pass
 - **WHEN** `forward(frames, actions)` is called with frames of shape `(B, T, 3, 224, 224)` and actions of shape `(B, T, A_dim)`
@@ -41,3 +39,4 @@ The model architecture SHALL be configurable via a dataclass with fields for: Vi
 #### Scenario: Custom model configuration
 - **WHEN** a `ModelConfig` is provided with `depth=6, num_heads=4, embed_dim=192`
 - **THEN** the constructed model SHALL use those values for the Transformer predictor
+
