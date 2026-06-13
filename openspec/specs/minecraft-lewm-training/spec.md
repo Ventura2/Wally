@@ -3,9 +3,7 @@
 ## Purpose
 
 LeWorldModel training pipeline for Minecraft: end-to-end specification covering inputs, encoder, predictor, and loss for training a world model on Minecraft gameplay trajectories.
-
 ## Requirements
-
 ### Requirement: Inputs
 The LeWorldModel training pipeline SHALL accept RGB frames of shape `(B, T, 3, 224, 224)` (batch, time, channels, height, width) normalized to `[0, 1]` and action vectors of shape `(B, T, A_dim)`.
 
@@ -32,8 +30,9 @@ The predictor SHALL be a causal Transformer with configurable depth (default 6),
 - **THEN** the predictor SHALL output 16 predicted latents using causal masking
 
 ### Requirement: Loss
-The training loss SHALL consist of prediction loss (MSE between predicted and target latents) and SIGReg regularization (mutual information estimation via learned critic MLP), combined as `L = L_pred + alpha * L_sigreg`.
+The training loss SHALL consist of prediction loss (MSE between predicted and target latents) and SIGReg regularization (closed-form Epps-Pulley statistic on random projections of the encoder embeddings), combined as `L = L_pred + alpha * L_sigreg`. The SIGReg term SHALL be stateless, non-negative, and SHALL NOT require a separate critic network or optimizer.
 
 #### Scenario: Loss computation
-- **WHEN** predicted and target latents are available
-- **THEN** the system SHALL compute MSE prediction loss and SIGReg loss and return the weighted sum
+- **WHEN** predicted and target latents and encoder embeddings are available
+- **THEN** the system SHALL compute MSE prediction loss, compute the closed-form SIGReg loss on the encoder embeddings, and return the weighted sum
+
