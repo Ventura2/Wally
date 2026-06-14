@@ -43,6 +43,7 @@ class DeployConfig(BaseModel):
     record_trajectory: bool = False
     output_dir: str = "data/recordings"
     render_distance: int = 4
+    throttler_interval: float | None = 0.05
 
     @field_validator("server_port")
     @classmethod

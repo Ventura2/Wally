@@ -28,6 +28,43 @@ def _infer_encoder_type(state_dict: dict[str, object]) -> str:
     return "vit"
 
 
+def _infer_depth(state_dict: dict[str, object]) -> int:
+    """Infer predictor transformer depth from a raw state dict.
+
+    Used as a fallback when the checkpoint predates the embedded
+    ``model_config``. Returns the max layer index + 1 (0-indexed), or
+    6 (the historical default) if no transformer layers are present.
+    """
+    layer_indices: set[int] = set()
+    for k in state_dict:
+        if "predictor.transformer.layers." in k:
+            try:
+                layer_indices.add(int(k.split("predictor.transformer.layers.")[1].split(".")[0]))
+            except (ValueError, IndexError):
+                continue
+    if not layer_indices:
+        return 6
+    return max(layer_indices) + 1
+
+
+def _infer_embed_dim(state_dict: dict[str, object]) -> int | None:
+    """Infer embed_dim from the encoder's last conv output channel count.
+
+    Walks ``encoder.conv*`` keys in sorted order and returns the largest
+    output channel count. This is the encoder's final feature dim and
+    matches the predictor's ``input_dim`` for CNN-encoder checkpoints.
+    """
+    max_out: int | None = None
+    for k in state_dict:
+        if k.startswith("encoder.conv") and k.endswith(".weight"):
+            v = state_dict[k]
+            if hasattr(v, "shape") and len(v.shape) == 4:
+                out = int(v.shape[0])
+                if max_out is None or out > max_out:
+                    max_out = out
+    return max_out
+
+
 class LeWorldModelAdapter:
     """Adapts a LeWorldModel to the WorldModelProtocol used by the planner.
 
@@ -102,7 +139,14 @@ class LatentRollout:
         device: torch.device | str | None = None,
         model_config: dict[str, object] | None = None,
     ) -> LeWorldModelAdapter:
-        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        map_location = torch.device(device) if device is not None else torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        checkpoint = torch.load(
+            checkpoint_path,
+            weights_only=False,
+            map_location=map_location,
+        )
         if model_config is not None:
             model_cfg = dict(model_config)
         else:
@@ -115,6 +159,16 @@ class LatentRollout:
             model_cfg["encoder_type"] = _infer_encoder_type(
                 checkpoint.get("model_state_dict", {}),
             )
+        if "depth" not in model_cfg:
+            model_cfg["depth"] = _infer_depth(
+                checkpoint.get("model_state_dict", {}),
+            )
+        if "embed_dim" not in model_cfg:
+            inferred_embed_dim = _infer_embed_dim(
+                checkpoint.get("model_state_dict", {}),
+            )
+            if inferred_embed_dim is not None:
+                model_cfg["embed_dim"] = inferred_embed_dim
         model = LeWorldModel(
             vit_variant=model_cfg.get("vit_variant", "vit_tiny_patch16_224"),
             embed_dim=model_cfg.get("embed_dim", 192),

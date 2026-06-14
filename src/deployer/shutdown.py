@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import signal
 import sys
@@ -46,11 +45,7 @@ class GracefulShutdown:
 
         logger.info("Step 2: Flushing action queue...")
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self._throttler.stop())
-            else:
-                loop.run_until_complete(self._throttler.stop())
+            self._throttler.stop()
         except Exception:
             logger.exception("Error flushing action queue during shutdown")
 

@@ -9,18 +9,17 @@ import numpy as np
 import torch
 from PIL import Image
 
+# Ensure `src/` is on sys.path so `agent`, `wally`, `collector` are importable
+# when the package is invoked without `pip install -e .` (e.g. inside the
+# wally-dev Podman container where Python 3.10 + minestudio is used).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_SRC = _PROJECT_ROOT / "src"
+for _p in (str(_PROJECT_ROOT), str(_SRC)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from agent.config import AgentConfig
-from wally.planner.config import CEMConfig
-from wally.planner.gradient_mpc import GradientMPC, GradientMPCConfig
-from wally.planner.hierarchical_planner import (
-    HierarchicalPlanner,
-    HierarchicalPlannerConfig,
-)
-from wally.planner.high_level_planner import (
-    HighLevelPlanner,
-    HighLevelPlannerConfig,
-)
-from wally.planner.plan import GoalConditionedPlanner
+from agent.planner_factory import build_planner
 from wally.planner.rollout import LatentRollout
 
 logger = logging.getLogger(__name__)
@@ -80,36 +79,6 @@ def _load_image_as_tensor(path: Path) -> torch.Tensor:
     return tensor.permute(2, 0, 1)
 
 
-def _build_planner(
-    args: argparse.Namespace,
-    rollout: LatentRollout,
-    encoder: torch.nn.Module,
-):
-    cem_config = CEMConfig.default()
-    gradient_mpc_config = GradientMPCConfig.default()
-    high_level_config = HighLevelPlannerConfig.default()
-    hier_config = HierarchicalPlannerConfig.default()
-
-    if args.planner == "cem":
-        from agent.protocol import FlatPlannerAdapter
-
-        planner = GoalConditionedPlanner(rollout, encoder, cem_config)
-        return FlatPlannerAdapter(planner)
-
-    if args.planner == "gradient":
-        from agent.protocol import FlatPlannerAdapter
-
-        planner = GradientMPC(rollout, encoder, gradient_mpc_config)
-        return FlatPlannerAdapter(planner)
-
-    from agent.protocol import HierarchicalPlannerAdapter
-
-    high_level = HighLevelPlanner(rollout._model, encoder, high_level_config)
-    low_level = GoalConditionedPlanner(rollout, encoder, cem_config)
-    planner = HierarchicalPlanner(high_level, low_level, hier_config)
-    return HierarchicalPlannerAdapter(planner)
-
-
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO)
     args = parse_args(argv)
@@ -129,7 +98,7 @@ def main(argv: list[str] | None = None) -> None:
 
     rollout = LatentRollout.from_checkpoint(args.checkpoint)
     encoder = rollout._model.encode
-    planner = _build_planner(args, rollout, encoder)
+    planner = build_planner(args.planner, rollout, encoder)
 
     try:
         from agent.env import MineStudioAgentEnv

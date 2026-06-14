@@ -55,6 +55,8 @@ class GoalConditionedPlanner:
         current_frame, goal_frame, squeeze = self._normalize_frames(
             current_frame, goal_frame
         )
+        current_frame = current_frame.to(self._device)
+        goal_frame = goal_frame.to(self._device)
 
         z_0 = self._encoder(current_frame).mean(dim=0, keepdim=True)
         z_g = self._encoder(goal_frame).mean(dim=0, keepdim=True)
@@ -98,6 +100,9 @@ class GoalConditionedPlanner:
     ) -> torch.Tensor | tuple[torch.Tensor, float]:
         if current_frame.dim() == 3:
             current_frame = current_frame.unsqueeze(0)
+        current_frame = current_frame.to(self._device)
+        if goal_latent.device != self._device:
+            goal_latent = goal_latent.to(self._device)
 
         z_0 = self._encoder(current_frame).mean(dim=0, keepdim=True)
         z_g = goal_latent.unsqueeze(0) if goal_latent.dim() == 1 else goal_latent

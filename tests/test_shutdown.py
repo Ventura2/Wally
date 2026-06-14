@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -76,18 +75,13 @@ class TestShutdownSequence:
         call_order: list[str] = []
         session_manager.shutdown.side_effect = lambda: call_order.append("session")
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             call_order.append("throttler")
 
         throttler.stop = _mock_stop
         connector.disconnect.side_effect = lambda: call_order.append("connector")
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         assert call_order[0] == "session"
 
@@ -101,18 +95,13 @@ class TestShutdownSequence:
         call_order: list[str] = []
         session_manager.shutdown.side_effect = lambda: call_order.append("session")
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             call_order.append("throttler")
 
         throttler.stop = _mock_stop
         connector.disconnect.side_effect = lambda: call_order.append("connector")
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         assert call_order[1] == "throttler"
 
@@ -126,18 +115,13 @@ class TestShutdownSequence:
         call_order: list[str] = []
         session_manager.shutdown.side_effect = lambda: call_order.append("session")
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             call_order.append("throttler")
 
         throttler.stop = _mock_stop
         connector.disconnect.side_effect = lambda: call_order.append("connector")
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         assert call_order[2] == "connector"
 
@@ -151,18 +135,13 @@ class TestShutdownSequence:
         call_order: list[str] = []
         session_manager.shutdown.side_effect = lambda: call_order.append("session")
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             call_order.append("throttler")
 
         throttler.stop = _mock_stop
         connector.disconnect.side_effect = lambda: call_order.append("connector")
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         assert call_order == ["session", "throttler", "connector"]
 
@@ -175,17 +154,12 @@ class TestShutdownSequence:
 
         session_manager.shutdown.side_effect = RuntimeError("save failed")
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             pass
 
         throttler.stop = _mock_stop
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         connector.disconnect.assert_called_once()
 
@@ -196,17 +170,12 @@ class TestShutdownSequence:
         shutdown._throttler = throttler
         shutdown._connector = connector
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             raise RuntimeError("flush failed")
 
         throttler.stop = _mock_stop
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         session_manager.shutdown.assert_called_once()
         connector.disconnect.assert_called_once()
@@ -220,17 +189,12 @@ class TestShutdownSequence:
 
         connector.disconnect.side_effect = RuntimeError("disconnect failed")
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             pass
 
         throttler.stop = _mock_stop
 
-        with patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
-            shutdown._shutdown_sequence()
+        shutdown._shutdown_sequence()
 
         session_manager.shutdown.assert_called_once()
 
@@ -243,19 +207,12 @@ class TestSignalHandling:
         shutdown._throttler = throttler
         shutdown._connector = connector
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             pass
 
         throttler.stop = _mock_stop
 
-        with (
-            patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop,
-            patch("deployer.shutdown.sys.exit") as mock_exit,
-        ):
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
+        with patch("deployer.shutdown.sys.exit") as mock_exit:
             shutdown._handle_signal(signal.SIGINT, None)
 
         session_manager.shutdown.assert_called_once()
@@ -269,50 +226,14 @@ class TestSignalHandling:
         shutdown._throttler = throttler
         shutdown._connector = connector
 
-        async def _mock_stop() -> None:
+        def _mock_stop() -> None:
             pass
 
         throttler.stop = _mock_stop
 
-        with (
-            patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop,
-            patch("deployer.shutdown.sys.exit") as mock_exit,
-        ):
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = False
-            mock_loop.run_until_complete.side_effect = lambda coro: asyncio.run(coro)
-            mock_get_loop.return_value = mock_loop
+        with patch("deployer.shutdown.sys.exit") as mock_exit:
             shutdown._handle_signal(signal.SIGTERM, None)
 
         session_manager.shutdown.assert_called_once()
         connector.disconnect.assert_called_once()
         mock_exit.assert_called_once_with(0)
-
-    def test_signal_handler_uses_running_loop_when_available(self):
-        shutdown = GracefulShutdown()
-        session_manager, throttler, connector = _make_mocks()
-        shutdown._session_manager = session_manager
-        shutdown._throttler = throttler
-        shutdown._connector = connector
-
-        async def _mock_stop() -> None:
-            pass
-
-        throttler.stop = _mock_stop
-
-        with (
-            patch("deployer.shutdown.asyncio.get_event_loop") as mock_get_loop,
-            patch("deployer.shutdown.sys.exit"),
-        ):
-            mock_loop = MagicMock()
-            mock_loop.is_running.return_value = True
-
-            def _create_task(coro):
-                asyncio.run(coro)
-                return MagicMock()
-
-            mock_loop.create_task.side_effect = _create_task
-            mock_get_loop.return_value = mock_loop
-            shutdown._handle_signal(signal.SIGINT, None)
-
-        mock_loop.create_task.assert_called_once()

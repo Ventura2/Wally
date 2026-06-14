@@ -1,0 +1,4 @@
+replan_interval: 4
+episode_timeout: 200
+resize: [64, 64]
+record_trajectory: true
