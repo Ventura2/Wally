@@ -78,7 +78,7 @@ class TestPlannerSmoke:
         rollout = LatentRollout(model=dynamics, gradient_policy="detach")
         encoder = _make_encoder()
         planner = GoalConditionedPlanner(
-            rollout, encoder, cfg, action_dim=A_DIM,
+            rollout, encoder, cfg, action_dim=A_DIM, device="cpu",
         )
 
         current_frame = torch.zeros(1, 3, 8, 8)

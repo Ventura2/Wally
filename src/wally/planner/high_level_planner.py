@@ -78,6 +78,10 @@ class HighLevelPlannerConfig(BaseModel):
 
 
 class HighLevelWorldModel(nn.Module):
+    # Consumes the encoder's projected output (via the encoder callable),
+    # not the LeWorldModel predictor's output. Unaffected by the
+    # residual-loss contract change.
+
     def __init__(
         self,
         encoder: Callable[[torch.Tensor], torch.Tensor],
@@ -219,6 +223,7 @@ class HighLevelPlanner:
             n_iterations=self._config.n_iterations,
             action_low=self._config.action_low,
             action_high=self._config.action_high,
+            device=self._device,
         )
 
         z_0_single = z_0

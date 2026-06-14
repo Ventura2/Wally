@@ -256,3 +256,19 @@ class TestCheckpointSpec7_1:
         assert step == 42
 
         assert torch.equal(model.weight, model2.weight)
+
+
+class TestCheckpointModelConfig:
+    def test_model_config_stored_in_payload(self, tmp_path):
+        model = nn.Linear(10, 5)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+        ckpt_path = tmp_path / "with_model_config.pt"
+        model_config = {"encoder_type": "cnn", "embed_dim": 192}
+        save_checkpoint(
+            ckpt_path, model, optimizer, 7, {"lr": 1e-3},
+            model_config=model_config,
+        )
+
+        data = torch.load(ckpt_path, weights_only=False)
+        assert data["model_config"] == {"encoder_type": "cnn", "embed_dim": 192}

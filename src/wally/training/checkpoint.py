@@ -20,6 +20,7 @@ def save_checkpoint(
     config: dict[str, Any],
     *,
     scheduler: LRScheduler | None = None,
+    model_config: dict[str, Any] | None = None,
 ) -> None:
     """Save training checkpoint.
 
@@ -30,6 +31,12 @@ def save_checkpoint(
         global_step: Current training step.
         config: Training configuration dict to embed in checkpoint.
         scheduler: Optional LR scheduler to persist.
+        model_config: Optional JSON-serializable dict of the model
+            architecture configuration (e.g. ``asdict(ModelConfig())``).
+            Stored under the ``model_config`` key in the payload so
+            downstream code can reconstruct the model without re-reading
+            the YAML config. Must be a plain dict; convert dataclasses
+            and ``Path`` objects at the call site.
     """
     payload: dict[str, Any] = {
         "model_state_dict": model.state_dict(),
@@ -39,6 +46,13 @@ def save_checkpoint(
     }
     if scheduler is not None:
         payload["scheduler_state_dict"] = scheduler.state_dict()
+    if model_config is not None:
+        if not isinstance(model_config, dict):
+            raise TypeError(
+                "model_config must be a plain dict; convert dataclasses "
+                "and Path objects at the call site (e.g. asdict(ModelConfig))."
+            )
+        payload["model_config"] = model_config
     torch.save(payload, path)
 
 

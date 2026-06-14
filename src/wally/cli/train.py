@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -38,13 +39,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="auto",
         help="Device to train on (default: auto).",
     )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to a log file. When set, every trainer INFO "
+            "record is also appended to this file in addition to stdout."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
-    logging.basicConfig(level=logging.INFO, force=True)
-
     args = parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stdout,
+        force=True,
+    )
+
+    if args.log_file is not None:
+        args.log_file.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(args.log_file, mode="a")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        )
+        file_handler.setLevel(logging.INFO)
+        logging.getLogger().addHandler(file_handler)
+        logger.info("Logging to file: %s", args.log_file)
 
     if not args.config.is_file():
         logger.error("Config file not found: %s", args.config)
@@ -94,7 +119,9 @@ def main(argv: list[str] | None = None) -> None:
     config_dict = train_config.to_dict()
     config_dict["device"] = device
 
-    trainer = Trainer(model, sigreg, dataloader, config_dict)
+    trainer = Trainer(
+        model, sigreg, dataloader, config_dict, model_config=asdict(model_config)
+    )
 
     if args.resume:
         trainer.resume(args.resume)

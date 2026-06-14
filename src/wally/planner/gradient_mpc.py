@@ -170,6 +170,7 @@ class GradientMPC:
             action_low=self._config.action_low,
             action_high=self._config.action_high,
             init_mean=init_mean,
+            device=self._device,
         )
 
         refined_actions, final_cost = self.refine_actions(z_0, z_g, cem_actions)

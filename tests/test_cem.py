@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from wally.planner.cem import CEMOptimizer, RandomShooting
@@ -137,3 +138,54 @@ class TestRandomShooting:
         a2, h2 = run(99)
         assert torch.equal(a1, a2)
         assert h1 == h2
+
+
+class TestCEMOptimizerDevice:
+    def test_device_cpu_explicit(self):
+        opt = CEMOptimizer()
+        rng = torch.Generator().manual_seed(0)
+        actions, _ = opt.optimize(
+            _quadratic_cost,
+            horizon=4,
+            action_dim=2,
+            device="cpu",
+            rng=rng,
+        )
+        assert actions.device.type == "cpu"
+
+    def test_device_none_default_is_cpu(self):
+        opt = CEMOptimizer()
+        rng = torch.Generator().manual_seed(0)
+        actions, _ = opt.optimize(
+            _quadratic_cost,
+            horizon=4,
+            action_dim=2,
+            rng=rng,
+        )
+        assert actions.device.type == "cpu"
+
+    def test_device_cuda_if_available(self):
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA not available")
+        opt = CEMOptimizer()
+        rng = torch.Generator().manual_seed(0)
+        actions, _ = opt.optimize(
+            _quadratic_cost,
+            horizon=4,
+            action_dim=2,
+            device="cuda",
+            rng=rng,
+        )
+        assert actions.device.type == "cuda"
+
+    def test_random_shooting_device_cpu(self):
+        rs = RandomShooting()
+        rng = torch.Generator().manual_seed(0)
+        actions, _ = rs.optimize(
+            _quadratic_cost,
+            horizon=4,
+            action_dim=2,
+            device="cpu",
+            rng=rng,
+        )
+        assert actions.device.type == "cpu"

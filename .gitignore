@@ -62,8 +62,15 @@ librocdxg/
 *.so.*
 *.a
 
-# Personal dev scripts (hardcoded /workspace/ paths, not reusable)
-tools/
-
 # Minecraft server
 minecraft-server/
+
+# Local run/eval outputs (eval reports, training logs, smoke test artifacts)
+runs/
+
+# Weights & Biases run logs
+wandb/
+
+# Loss-curve dashboard outputs from tools/loss_dashboard.py
+loss_curve.csv
+loss_curve.png

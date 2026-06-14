@@ -76,6 +76,7 @@ class GoalConditionedPlanner:
             n_iterations=self._config.n_iterations,
             action_low=self._config.action_low,
             action_high=self._config.action_high,
+            device=self._device,
         )
 
         if squeeze:
@@ -119,6 +120,7 @@ class GoalConditionedPlanner:
             action_low=self._config.action_low,
             action_high=self._config.action_high,
             init_mean=self._warm_start_mean,
+            device=self._device,
         )
 
         if actions.dim() == 3 and actions.shape[0] == 1:

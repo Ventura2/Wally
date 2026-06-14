@@ -30,11 +30,14 @@ class Trainer:
         sigreg: SIGReg,
         train_loader: DataLoader[Any],
         config: dict[str, Any],
+        *,
+        model_config: dict[str, Any] | None = None,
     ) -> None:
         self.model = model
         self.sigreg = sigreg
         self.train_loader = train_loader
         self.config = config
+        self._model_config = model_config
 
         self.lr: float = config.get("lr", 1e-4)
         self.weight_decay: float = config.get("weight_decay", 1e-5)
@@ -94,18 +97,21 @@ class Trainer:
         # Forward pass
         if self.use_amp:
             with autocast("cuda", dtype=self.amp_dtype):
-                predicted, target, embeddings = self.model(
+                predicted_change, emb_T_B_D = self.model(
                     frames, actions, return_embeddings=True
                 )
+                # emb_T_B_D is (T, B, D); residual loss needs (B, T, D)
+                emb_B_T_D = emb_T_B_D.transpose(0, 1)
                 total_loss, metrics = combined_loss(
-                    predicted, target, embeddings, self.alpha, self.sigreg
+                    emb_B_T_D, predicted_change, emb_T_B_D, self.alpha, self.sigreg
                 )
         else:
-            predicted, target, embeddings = self.model(
+            predicted_change, emb_T_B_D = self.model(
                 frames, actions, return_embeddings=True
             )
+            emb_B_T_D = emb_T_B_D.transpose(0, 1)
             total_loss, metrics = combined_loss(
-                predicted, target, embeddings, self.alpha, self.sigreg
+                emb_B_T_D, predicted_change, emb_T_B_D, self.alpha, self.sigreg
             )
 
         if not torch.isfinite(total_loss):
@@ -213,7 +219,8 @@ class Trainer:
     def train(self) -> None:
         """Run the full training loop."""
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        init_wandb(self.config)
+        run_name = f"{self.config['wandb_project']}-step-{self.global_step}"
+        init_wandb(self.config, name=run_name)
 
         logger.info("Starting training from step %d", self.global_step)
 
@@ -250,6 +257,7 @@ class Trainer:
                         self.global_step,
                         self.config,
                         scheduler=self.scheduler,
+                        model_config=self._model_config,
                     )
                     logger.info("Saved checkpoint at step %d", self.global_step)
 
@@ -262,6 +270,7 @@ class Trainer:
             self.global_step,
             self.config,
             scheduler=self.scheduler,
+            model_config=self._model_config,
         )
         logger.info(
             "Training complete. Final checkpoint saved at step %d",

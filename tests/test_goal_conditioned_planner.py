@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 import torch
 
 from wally.planner.config import CEMConfig
@@ -133,3 +134,55 @@ class TestGoalConditionedPlanner:
         frame = torch.randn(2, 3, 64, 64)
         actions = planner.plan(frame, frame)
         assert actions.shape == (3, 25)
+
+
+class TestGoalConditionedPlannerCPU:
+    def test_plan_to_latent_end_to_end_on_cpu(self):
+        latent_dim = 8
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout(latent_dim=latent_dim)
+        encoder = _make_encoder(latent_dim=latent_dim)
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current_frame = torch.randn(3, 64, 64)
+        goal_latent = torch.randn(latent_dim)
+
+        actions = planner.plan_to_latent(current_frame, goal_latent)
+
+        assert isinstance(actions, torch.Tensor)
+        assert torch.isfinite(actions).all()
+
+
+class TestGoalConditionedPlannerCUDA:
+    pytestmark = pytest.mark.skipif(
+        not torch.cuda.is_available(), reason="CUDA not available"
+    )
+
+    def test_plan_to_latent_returns_cuda_tensor(self):
+        latent_dim = 8
+
+        def cuda_encoder(frame: torch.Tensor) -> torch.Tensor:
+            frame = frame.to("cuda")
+            B = frame.shape[0]
+            return torch.randn(B, latent_dim, device="cuda")
+
+        def cuda_rollout(z_0: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+            z_0 = z_0.to(actions.device)
+            B, H, _ = actions.shape
+            trajectory = torch.randn(B, H + 1, latent_dim, device=actions.device)
+            trajectory[:, 0, :] = z_0
+            return trajectory
+
+        encoder = MagicMock(side_effect=cuda_encoder)
+        rollout = MagicMock()
+        rollout.rollout = MagicMock(side_effect=cuda_rollout)
+
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cuda")
+
+        current_frame = torch.randn(3, 64, 64)
+        goal_latent = torch.randn(latent_dim, device="cuda")
+
+        actions = planner.plan_to_latent(current_frame, goal_latent)
+
+        assert actions.device.type == "cuda"
