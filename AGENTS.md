@@ -63,6 +63,10 @@ Application code lives in `src/` with these packages:
   - `planner/` — CEM optimizer, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
   - `cli/` — `wally-train`, `wally-convert`, `wally-collect`, `wally-train-curriculum` entry points
 - `src/agent/` — goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
+- `tools/` — standalone scripts (not part of the installed entry points). Current contents:
+  - `loss_dashboard.py` — tail a `wally-train --log-file` log, plot loss curves + ETA
+  - `eval_goals.py` — load several checkpoints, plan toward long-horizon goals (get_wood, get_iron_ore, get_stone, navigate_look_around), report success/latent-distance per (checkpoint, goal) across `world_model` / `minestudio` / `mock` backends
+  - `*` — shard inspection / repacking / verification scripts (see `tools/audit_diamond.py`, `tools/verify_shard.py`, etc. for examples)
 
 Tests live in `tests/` covering all packages plus an end-to-end integration test.
 
@@ -77,6 +81,13 @@ Tests live in `tests/` covering all packages plus an end-to-end integration test
 - `wally-play` — run goal-conditioned agent loop locally via MineStudio (plan, execute, observe, replan)
 - `wally-validate` — inspect/validate/sample shards
 - `wally-deploy` — deploy trained agent to a Minecraft server (connection, auth, action execution, safety filters)
+
+## Standalone tools (not installed as entry points)
+
+Run with the venv's Python directly:
+
+- `python tools/loss_dashboard.py --log-file <path> [--config <yaml>] [--output <png>] [--live]` — live loss-curve + ETA dashboard for a `wally-train` run.
+- `python tools/eval_goals.py --checkpoints '<glob>' --mode {world_model,minestudio,mock} [--config <yaml>] [--num-checkpoints N] [--episodes N] --output <dir>` — per-checkpoint long-horizon goal eval (success rate, latent distance, plan cost). See `--help` for goal list and CEM tuning.
 
 ## GPU setup (Windows) — recommended for training
 

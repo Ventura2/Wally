@@ -431,6 +431,147 @@ wally-deploy --config deploy_config.yaml --server prod.example.com:25565
 - **Local evaluation** (via `wally-play`): Use for development, testing, and benchmarking in MineStudio's local environment
 - **Live server deployment** (via `wally-deploy`): Use for real Minecraft servers, multi-player environments, and persistent autonomous gameplay
 
+## Programmatic usage
+
+For notebooks, custom planners, or research scripts, you can instantiate the model directly, load a checkpoint, and run inference in Python — no CLI required.
+
+### Model class
+
+The world model lives in `src/wally/models/lewm.py` (`class LeWorldModel`). It wraps a `SimpleCNNEncoder` (default) or `ViTEncoder` + `projector` MLP + `action_embedder` + AdaLN-Zero causal `ARPredictor` + `pred_proj` MLP.
+
+### Load config and instantiate
+
+The training YAML is the source of truth for architecture. Load it with `wally.config.loader.load_config`:
+
+```python
+import torch
+from wally.config.loader import load_config
+from wally.models import LeWorldModel
+
+_, model_cfg = load_config("configs/lewm_default.yaml")
+
+model = LeWorldModel(
+    vit_variant=model_cfg.vit_variant,
+    embed_dim=model_cfg.embed_dim,
+    depth=model_cfg.depth,
+    num_heads=model_cfg.num_heads,
+    mlp_ratio=model_cfg.mlp_ratio,
+    dropout=model_cfg.dropout,
+    action_dim=model_cfg.action_dim,
+    pretrained=model_cfg.pretrained,        # set False to skip the ViT weight download
+    encoder_type=model_cfg.encoder_type,    # "cnn" (default) or "vit"
+)
+```
+
+### Load a checkpoint
+
+Checkpoints embed the model weights under `model_state_dict` and the architecture config under `model_config`. Reconstruct the model and load weights without re-reading the YAML:
+
+```python
+from wally.training.checkpoint import load_checkpoint
+
+ckpt = torch.load("checkpoints/checkpoint_10000.pt", map_location="cpu", weights_only=False)
+model_cfg = ckpt["model_config"]                            # dict
+model = LeWorldModel(
+    **{k: v for k, v in model_cfg.items() if k != "pretrained"},
+    pretrained=False,
+)
+load_checkpoint("checkpoints/checkpoint_10000.pt", model)
+model.eval()
+```
+
+Older checkpoints (pre-`lewm-adaln-predictor`) do not have `model_config` and use a different architecture — they are archived in `checkpoints/_incompatible_pre_adaln/` and cannot be loaded by the current code.
+
+### Run inference
+
+`LeWorldModel.forward(frames, actions, return_embeddings=False)` returns the **predicted change** Δ, a per-step delta in latent space. The next-frame latent is reconstructed by adding it to the current projected embedding, matching the loss:
+
+```python
+B, T = 1, 16
+frames  = torch.randn(B, T, 3, 224, 224)        # RGB, normalized as in training
+actions = torch.zeros(B, T, model_cfg.action_dim)
+
+with torch.no_grad():
+    predicted_change, emb_T_B_D = model(frames, actions, return_embeddings=True)
+    # predicted_change: (B, T-1, embed_dim)
+    # emb_T_B_D:        (T, B, embed_dim)
+    emb = emb_T_B_D.transpose(0, 1)             # (B, T, embed_dim)
+    predicted_next_latent = emb[:, :-1] + predicted_change   # (B, T-1, embed_dim)
+```
+
+Pass `return_embeddings=False` (the default) for the bare predicted-change output; pass `True` when you also need the projected encoder embeddings — for example to run SIGReg, compute a planning cost, or visualize latents.
+
+### Inference device
+
+Move the model to GPU before the forward pass — the projector runs BatchNorm1d in fp32, so CUDA is recommended for sustained throughput. On Windows + RDNA2 (RX 6700 XT), use the TheRock multi-arch PyTorch build; see AGENTS.md "GPU setup (Windows)". On WSL2, GPU compute is currently broken — fall back to CPU for short sequences:
+
+```python
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+frames, actions = frames.to(device), actions.to(device)
+```
+
+## Monitoring & evaluation
+
+The `tools/` directory ships standalone scripts for inspecting a run-in-progress and for measuring how well a checkpoint can actually plan toward long-horizon goals. They are not part of the installed `wally-*` entry points — invoke them directly with the venv's Python.
+
+### Live loss curve + ETA — `tools/loss_dashboard.py`
+
+Tails a `wally-train --log-file` log, plots `prediction_loss` / `sigreg_loss` / `total_loss` against global step, and overlays a text box with the current step, progress, steps/sec, and ETA to `max_steps`. Useful for a quick "is it going to finish tonight?" check while training runs in the background.
+
+```bash
+# One-shot: save PNG + print summary
+python tools/loss_dashboard.py \
+    --log-file runs/2026-06-15_full_run.out \
+    --config configs/lewm_default.yaml \
+    --output runs/losses.png
+
+# Live: redraw every 5s in a window (needs a desktop session)
+python tools/loss_dashboard.py \
+    --log-file runs/2026-06-15_full_run.out \
+    --config configs/lewm_default.yaml \
+    --live --interval 5
+```
+
+The plot parser matches the standard `wally-train` log line (`Step %d | prediction_loss=... | sigreg_loss=... | total_loss=... | lr=...`). `max_steps` is read from the YAML's `training:` section, or override with `--max-steps`.
+
+### Goal-conditioned eval across checkpoints — `tools/eval_goals.py`
+
+Loads several checkpoints along the training run, plans toward a set of long-horizon goals (built-in: `get_wood`, `get_iron_ore`, `get_stone`, `navigate_look_around`), executes the plan in a backend, and reports per-`(checkpoint, goal)`: success rate, mean final latent distance to the goal, mean initial plan cost, mean steps. Lets you see whether the world model is actually getting better at long-horizon tasks, not just minimising the loss.
+
+```bash
+# Pure-latent eval: no env needed, slow on CPU, fast on CUDA.
+python tools/eval_goals.py \
+    --checkpoints "checkpoints/checkpoint_*.pt" \
+    --num-checkpoints 5 \
+    --mode world_model \
+    --episodes 2 \
+    --goals get_wood,get_iron_ore,get_stone \
+    --output runs/goal_eval
+
+# Real MineStudio eval (WSL2 container only).
+python tools/eval_goals.py \
+    --checkpoints "checkpoints/checkpoint_*.pt" \
+    --num-checkpoints 3 \
+    --mode minestudio \
+    --episodes 3 \
+    --output runs/goal_eval_real
+```
+
+Three backends are supported:
+
+| Backend | What it does | When to use it |
+|---|---|---|
+| `--mode world_model` | World model rolls itself out from a random initial latent. No env required. | Fast smoke test of whether the planner converges. |
+| `--mode minestudio` | Real Minecraft via MineStudio; success is measured by checking `info["inventory"]` for goal-specific items. | Authoritative long-horizon eval (slow). |
+| `--mode mock` | Synthetic env that mimics MineStudio's interface. | Smoke-test the eval tool itself, no Minecraft. |
+
+Output: `output/episodes.csv`, `output/episodes.json`, and `output/report.md` (per-checkpoint tables of success rate, mean final latent distance, mean initial plan cost).
+
+Notes:
+- The script reads the `model:` section of `--config` to reconstruct the architecture (the checkpoint itself only stores the training config). Default: `configs/lewm_default.yaml`.
+- Default `--device cpu` is intentional: the planner creates CEM samples on CPU regardless of the world-model device, so `--device cuda` would mismatch. Use CUDA only after fixing that in the planner (`openspec/changes/fix-planner-cnn-encoder-and-device/` is the tracked fix).
+
 ## Tests
 
 ```bash
@@ -463,6 +604,7 @@ src/
   agent/         # goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
 configs/         # example YAML configs
 tests/           # unit tests + end-to-end integration test
+tools/           # standalone scripts (loss dashboard, goal-conditioned eval, shard utilities)
 ```
 
 ## References
