@@ -38,6 +38,8 @@ class SubgoalDetectorConfig(BaseModel):
 
 
 class SubgoalDetector:
+    # consumes prediction error, not the raw predicted tensor; unaffected by
+    # residual-loss contract change.
     def __init__(self, config: SubgoalDetectorConfig | None = None) -> None:
         self._config = config if config is not None else SubgoalDetectorConfig.default()
 

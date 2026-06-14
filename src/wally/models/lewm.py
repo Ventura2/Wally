@@ -19,8 +19,13 @@ class LeWorldModel(nn.Module):
         frames → encoder → projector → emb (B, T, hidden_dim)
         actions → action_embedder → act_emb (B, T-1, c_dim)
         pred_emb = predictor(emb[:, :-1], act_emb) → (B, T-1, hidden_dim)
-        predicted = pred_proj(pred_emb) → (B, T-1, output_dim)
-        target    = emb[:, 1:]  (next-frame projected latents)
+        predicted_change = pred_proj(pred_emb) → (B, T-1, output_dim)
+
+    The first returned tensor is the **predicted change** Δ — the frame-to-frame
+    delta in latent space. The next-frame latent is reconstructed by the loss
+    as ``projected_embeddings[:, :-1] + predicted_change``. This is the
+    LeWorldModel paper formulation (Algorithm 1, line 303:
+    ``pred_loss = F.mse_loss(emb[:, 1:] - next_emb[:, :-1])``).
 
     SIGReg is applied to ``emb`` (the projected encoder output), matching
     the official LeWM paper.
@@ -105,9 +110,11 @@ class LeWorldModel(nn.Module):
                 embeddings (the SIGReg input), transposed to (T, B, D).
 
         Returns:
-            predicted_latents: (B, T-1, embed_dim)
-            target_latents:    (B, T-1, embed_dim)
-            embeddings:        (T, B, embed_dim) only if return_embeddings=True
+            predicted_change: (B, T-1, embed_dim) — the per-step change in
+                latent space (the predictor's output). The next-frame latent
+                is reconstructed as ``projected_embeddings[:, :-1] + predicted_change``.
+            embeddings: (T, B, embed_dim) — only if return_embeddings=True;
+                the SIGReg input in time-first shape.
         """
         B, T, C, H, W = frames.shape
 
@@ -123,21 +130,17 @@ class LeWorldModel(nn.Module):
         # project latents through the projector (BatchNorm1d in fp32)
         emb = self._projector_fp32(latents)
 
-        # targets: next-frame projected latents
-        target_latents = emb[:, 1:]
-
         # predictor input + conditioning
         current_emb = emb[:, :-1]                       # (B, T-1, embed_dim)
         act_emb = self.action_embedder(actions[:, :-1])  # (B, T-1, embed_dim)
 
-        # AdaLN-Zero conditioned causal prediction
+        # AdaLN-Zero conditioned causal prediction — output is the per-step change
         pred_emb = self.predictor(current_emb, act_emb)  # (B, T-1, embed_dim)
-        predicted_latents = self.pred_proj(pred_emb)
+        predicted_change = self.pred_proj(pred_emb)
 
         if return_embeddings:
             return (
-                predicted_latents,
-                target_latents,
+                predicted_change,
                 emb.transpose(0, 1).contiguous(),
             )
-        return predicted_latents, target_latents
+        return (predicted_change,)

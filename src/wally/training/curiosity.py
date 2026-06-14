@@ -56,6 +56,10 @@ class CuriosityConfig(BaseModel):
 
 
 class CuriosityModule(nn.Module):
+    # ICM forward model: trained on (current, action, next) triples, not on
+    # the LeWorldModel predictor's output. Unaffected by the residual-loss
+    # contract change.
+
     def __init__(self, config: CuriosityConfig | None = None) -> None:
         super().__init__()
         self.config = config or CuriosityConfig.default()

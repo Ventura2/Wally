@@ -151,10 +151,10 @@ class TestLeWMNumericalStability:
 
         def patched_forward(*args, **kwargs):
             call_count["n"] += 1
-            predicted, target, embeddings = original_forward(*args, **kwargs)
+            predicted_change, embeddings = original_forward(*args, **kwargs)
             if call_count["n"] == 2:
-                predicted = torch.full_like(predicted, float("nan"))
-            return predicted, target, embeddings
+                predicted_change = torch.full_like(predicted_change, float("nan"))
+            return predicted_change, embeddings
 
         trainer.model.forward = patched_forward
 

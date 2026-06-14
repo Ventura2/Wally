@@ -1,8 +1,5 @@
-# lewm-numerical-stability Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change fix-lewm-nan-loss. Update Purpose after archive.
-## Requirements
 ### Requirement: Closed-form SIGReg statistic
 The system SHALL provide a `SIGReg` module that computes the Epps-Pulley statistic on `num_proj` random unit-norm projections of an input embedding tensor. The module SHALL be parameterized by `num_proj` (default 1024) and `knots` (default 17) and SHALL expose no learnable parameters. The forward input shape SHALL be `(T, B, D)` (time, batch, dimension) and the output SHALL be a scalar tensor. The module SHALL assert `input.dim() == 3` on entry; it SHALL NOT re-transpose its input.
 
@@ -40,22 +37,3 @@ A 200-step training run on real Minecraft shards (`data/shards/chunks/*.tar`) wi
 #### Scenario: Smoke run does not collapse (anti-regression)
 - **WHEN** the trainer runs 200 steps with the default config
 - **THEN** the run SHALL satisfy the four invariants from `lewm-training-loop` requirement "Anti-collapse regression scenario": `prediction_loss > 1e-6` at every step, `prediction_loss` std/mean ≥ 1%, `sigreg_loss` std/mean ≥ 0.1%, and the Pearson correlation between model weight L2 norm and step number (across 10 evenly-spaced checkpoints) SHALL be < 0.999
-
-### Requirement: NaN recovery
-If the training loss becomes non-finite at any step, the system SHALL log a warning, zero gradients, skip the optimizer step for that batch, and continue. The model weights SHALL remain unchanged for the skipped step.
-
-#### Scenario: Forced NaN injection is recovered
-- **WHEN** the model output is patched to NaN for a single batch during a 50-step smoke run
-- **THEN** the system SHALL log a warning, skip that step's update, and the next batch SHALL produce a finite loss with unchanged model weights
-
-### Requirement: Scheduler resume correctness
-When a checkpoint containing `scheduler_state_dict` is loaded, the system SHALL restore the scheduler's `last_epoch` and the next `scheduler.step()` call SHALL produce the learning rate that was saved. When the checkpoint lacks `scheduler_state_dict` (legacy), the system SHALL initialize `last_epoch = global_step - 1`.
-
-#### Scenario: LR survives a save-load round-trip
-- **WHEN** the trainer saves a checkpoint at step N and then reloads it
-- **THEN** `scheduler.get_last_lr()[0]` immediately after load SHALL match the LR at step N (before save)
-
-#### Scenario: LR does not regress to warmup on resume
-- **WHEN** training is resumed at global step 10000 with a 500-step warmup
-- **THEN** the LR after the first resumed step SHALL NOT be near zero (warmup SHALL NOT re-run)
-

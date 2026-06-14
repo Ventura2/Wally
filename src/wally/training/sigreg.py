@@ -42,14 +42,22 @@ class SIGReg(nn.Module):
     def forward(self, proj: Tensor) -> Tensor:
         """Compute the Epps-Pulley statistic on input embeddings.
 
+        The input is expected at shape ``(T, B, D)`` (time, batch, dimension)
+        per the le-wm convention. The module does NOT re-transpose its
+        input — the caller is responsible for providing time-first layout.
+
         Args:
-            proj: Tensor of shape (T, B, D) (time, batch, dimension) per the
-                le-wm convention.
+            proj: Tensor of shape (T, B, D).
 
         Returns:
             Scalar non-negative tensor measuring deviation from an isotropic
             Gaussian.
         """
+        assert proj.dim() == 3, (
+            f"SIGReg expects (T, B, D), got shape {tuple(proj.shape)} — "
+            "the SIGReg input contract is time-first; a silent re-transpose "
+            "is a regression of this contract"
+        )
         A = torch.randn(proj.size(-1), self.num_proj, device=proj.device)
         A = A.div_(A.norm(p=2, dim=0))
         x_t = (proj @ A).unsqueeze(-1) * self.t

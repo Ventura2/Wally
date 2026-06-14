@@ -5,11 +5,15 @@
 Training loop for LeWorldModel: prediction loss, SIGReg regularization, optimizer with cosine schedule, mixed precision training, checkpointing, logging, and CLI entry point.
 ## Requirements
 ### Requirement: Prediction loss
-The system SHALL compute a prediction loss as the mean squared error (MSE) between predicted latents and target latents (encoded from the next frame). This loss SHALL be differentiable and backpropagated through both the predictor and encoder.
+The system SHALL compute a prediction loss as the mean squared error (MSE) between the **reconstructed next-frame latent** and the true next-frame latent. The reconstruction SHALL be `current_latent + predicted_change`, where `current_latent = projected_embeddings[:, :-1]` and `predicted_change` is the predictor's output. Equivalently, the loss SHALL be `F.mse_loss(emb[:, 1:] - emb[:, :-1], predicted_change)`, which matches the LeWorldModel paper Algorithm 1 line 303. The loss SHALL be differentiable and backpropagated through both the predictor and encoder.
 
 #### Scenario: Compute prediction loss
-- **WHEN** predicted latents and target latents of matching shape are provided
-- **THEN** the system SHALL return a scalar MSE loss value
+- **WHEN** the predictor output (`predicted_change` of shape `(B, T-1, D)`), the projected encoder embeddings (`emb` of shape `(B, T, D)`), and the SIGReg input are provided
+- **THEN** the system SHALL return `MSE(emb[:, 1:] - emb[:, :-1], predicted_change)` as a scalar loss value
+
+#### Scenario: Loss is non-zero at predictor init
+- **WHEN** the predictor is freshly initialized (AdaLN-Zero: `predicted_change = 0`) and the encoder produces non-trivial embeddings
+- **THEN** the prediction loss SHALL be `MSE(emb[:, 1:] - emb[:, :-1], 0) > 0` (the variance of the frame-to-frame latent change), NOT zero. A prediction loss that is identically zero across multiple steps is a regression of this requirement.
 
 ### Requirement: SIGReg loss
 The system SHALL implement SIGReg (Sketch Isotropic Gaussian Regularization) as a closed-form, stateless Epps-Pulley statistic computed on `num_proj` (default 1024) random unit-norm projections of the encoder embeddings. The statistic SHALL be non-negative, finite for any finite input embedding, and SHALL be differentiable through the encoder but not through the projection matrix. The SIGReg module SHALL expose no learnable parameters.
@@ -23,11 +27,15 @@ The system SHALL implement SIGReg (Sketch Isotropic Gaussian Regularization) as 
 - **THEN** the SIGReg loss SHALL be a finite, well-defined non-negative value (not NaN or Inf)
 
 ### Requirement: Combined training loss
-The system SHALL compute a combined loss as `prediction_loss + alpha * sigreg_loss` where `alpha` is a configurable weight (default 0.1). The SIGReg loss SHALL be applied to the **projected** encoder embeddings (i.e., the output of the `projector` MLP in `LeWorldModel`), matching the LeWorldModel paper formulation.
+The system SHALL compute a combined loss as `prediction_loss + alpha * sigreg_loss` where `alpha` is a configurable weight (default 0.1). The SIGReg loss SHALL be applied to the **projected** encoder embeddings, transposed to `(T, B, D)`, before being passed to the `SIGReg` module. The call site SHALL provide the SIGReg input in `(T, B, D)` shape directly; the SIGReg module SHALL NOT re-transpose it.
 
 #### Scenario: Combined loss with default weight
 - **WHEN** training step runs with default configuration
-- **THEN** the total loss SHALL be `prediction_loss + 0.1 * sigreg_loss(proj_emb)` where `proj_emb` is the output of the `projector` MLP transposed to `(T, B, D)`
+- **THEN** the total loss SHALL be `prediction_loss + 0.1 * sigreg_loss(proj_emb_T_B_D)` where `proj_emb_T_B_D` is the projected encoder output already transposed to `(T, B, D)` (no double-transpose at the call site)
+
+#### Scenario: SIGReg receives (T, B, D) directly
+- **WHEN** the trainer calls `combined_loss(...)` and the SIGReg module is invoked
+- **THEN** the SIGReg input SHALL have shape `(T, B, D)` at the moment `SIGReg.forward` is entered (verified by patching `SIGReg.forward` to assert the shape, or by inspecting the tensor's `.shape` from inside the module)
 
 ### Requirement: Optimizer setup
 The system SHALL use AdamW optimizer with configurable learning rate (default 1e-4), weight decay (default 1e-5), and a cosine annealing learning rate schedule with warmup.
@@ -75,11 +83,30 @@ The system SHALL save model checkpoints containing model state dict, optimizer s
 - **THEN** the system SHALL initialize the scheduler with `last_epoch = global_step - 1` and log a one-time info message
 
 ### Requirement: Logging
-The system SHALL log training metrics (prediction loss, SIGReg loss, total loss, learning rate) to wandb at configurable intervals (default every 100 steps).
+The system SHALL log training metrics (prediction loss, SIGReg loss, total loss, learning rate) to wandb at configurable intervals (default every 100 steps). The system SHALL also write the same metrics to stdout/stderr with `StreamHandler(sys.stdout)` and `force=True` in the logging configuration, and SHALL accept a `--log-file PATH` CLI flag that, when set, attaches a `FileHandler` writing to `PATH` in append mode. The `--log-file` handler SHALL flush after every record.
 
 #### Scenario: Log metrics to wandb
 - **WHEN** the global step reaches a log interval
 - **THEN** the system SHALL log current loss values and learning rate to the active wandb run
+
+#### Scenario: Log metrics reach disk via stdout
+- **WHEN** the trainer is launched without `python -u` and without `--log-file`, but with the standard `logging.basicConfig(stream=sys.stdout, force=True)` config
+- **THEN** every `logger.info` call from the trainer SHALL reach the captured stdout within one second (verified by reading the captured output after 100 logged steps and finding all 100 records)
+
+#### Scenario: Log metrics reach disk via --log-file
+- **WHEN** `wally-train --config … --log-file runs/2026-06-15.log` is launched and runs for 100 logged steps
+- **THEN** the file `runs/2026-06-15.log` SHALL contain 100 metric lines, all of the form `Step N | prediction_loss=… | sigreg_loss=… | total_loss=… | lr=…`
+
+### Requirement: Deterministic wandb run name reflecting resume state
+The system SHALL initialize the wandb run with `name = f"{wandb_project}-step-{global_step}"`, where `wandb_project` is the configured project name and `global_step` is the trainer's step counter at the moment `wandb.init()` is called. This makes fresh and resumed runs identifiable in the W&B dashboard.
+
+#### Scenario: Fresh run produces step-0 name
+- **WHEN** training starts with `global_step = 0` (no resume)
+- **THEN** `wandb.init()` SHALL be called with `name = "<wandb_project>-step-0"`
+
+#### Scenario: Resumed run produces step-N name
+- **WHEN** training resumes from a checkpoint at `global_step = 50000`
+- **THEN** `wandb.init()` SHALL be called with `name = "<wandb_project>-step-50000"`
 
 ### Requirement: CLI entry point
 The system SHALL provide a `wally-train` CLI command that accepts a path to a YAML config file and launches training.
@@ -101,4 +128,23 @@ The training loop SHALL sanitize inputs by applying `torch.nan_to_num(frames, na
 #### Scenario: NaN action in batch
 - **WHEN** a batch contains NaN or Inf values in `actions` or `frames`
 - **THEN** the sanitization SHALL replace them with 0.0 and the forward pass SHALL complete with finite activations
+
+### Requirement: Anti-collapse regression scenario
+A 200-step trainer run on synthetic data with the default LeWM config SHALL exhibit the following four invariants. If any invariant fails, the run is considered to have collapsed and MUST be flagged for investigation.
+
+#### Scenario: prediction_loss is strictly positive
+- **WHEN** the trainer runs 200 steps on synthetic data
+- **THEN** at every logged step, `prediction_loss > 1e-6` (the loss is not identically zero or stuck at a trivial baseline)
+
+#### Scenario: prediction_loss varies across steps
+- **WHEN** the trainer runs 200 steps on synthetic data
+- **THEN** `prediction_loss` SHALL NOT be constant across the run — the standard deviation across the 200 logged values SHALL be at least 1% of the mean (a perfectly flat curve is a regression of the residual-loss contract)
+
+#### Scenario: sigreg_loss varies across steps
+- **WHEN** the trainer runs 200 steps on synthetic data
+- **THEN** `sigreg_loss` SHALL vary across the run — the standard deviation across the 200 logged values SHALL be at least 0.1% of the mean (a flat sigreg curve means the encoder is producing constant embeddings, which is a regression of the SIGReg contract)
+
+#### Scenario: weight norm does not grow linearly with step
+- **WHEN** 10 evenly-spaced checkpoints are sampled from a 200-step run
+- **THEN** the model weight L2 norm across those 10 checkpoints SHALL NOT be perfectly linearly correlated with step number (a Pearson correlation > 0.999 between weight norm and step is a regression of the "no weight explosion" contract)
 

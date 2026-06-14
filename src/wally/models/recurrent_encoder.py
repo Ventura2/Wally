@@ -8,7 +8,12 @@ from wally.models.encoder import ViTEncoder
 
 
 class RecurrentEncoder(nn.Module):
-    """ViTEncoder + single-layer LSTM for memory-augmented frame encoding."""
+    """ViTEncoder + single-layer LSTM for memory-augmented frame encoding.
+
+    Consumes the encoder's own projected output (ViT tokens + LSTM), NOT
+    the LeWorldModel predictor's output. Unaffected by the residual-loss
+    contract change.
+    """
 
     def __init__(
         self,
