@@ -69,6 +69,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="cem",
         help="Planner type.",
     )
+    parser.add_argument(
+        "--viewer",
+        choices=["cv2", "none"],
+        default="cv2",
+        help="Live POV viewer: 'cv2' shows an OpenCV window, 'none' is headless.",
+    )
+    parser.add_argument(
+        "--no-viewer",
+        action="store_const",
+        const="none",
+        dest="viewer",
+        help="Disable the live POV viewer (alias for --viewer none).",
+    )
     return parser.parse_args(argv)
 
 
@@ -109,9 +122,20 @@ def main(argv: list[str] | None = None) -> None:
     env = MineStudioAgentEnv(config)
 
     from agent.loop import AgentLoop
+    from agent.viewer import FrameViewer, NullViewer
 
-    loop = AgentLoop(env, planner, config)
-    result = loop.run_episode(goal_frame)
+    if args.viewer == "cv2":
+        viewer = FrameViewer()
+        logger.info("Live POV viewer enabled (cv2). Press 'q' or 'Esc' to quit.")
+    else:
+        viewer = NullViewer()
+        logger.info("Live POV viewer disabled (--viewer none).")
+
+    loop = AgentLoop(env, planner, config, viewer=viewer)
+    try:
+        result = loop.run_episode(goal_frame)
+    finally:
+        viewer.close()
 
     print(
         f"Episode complete: {result.steps} steps, "

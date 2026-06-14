@@ -17,6 +17,7 @@ class TestParseArgs:
         assert args.record is False
         assert args.output_dir == Path(".")
         assert args.planner == "cem"
+        assert args.viewer == "cv2"
 
     def test_parse_args_all_options(self, tmp_path: Path) -> None:
         config_path = tmp_path / "agent.yaml"
@@ -37,6 +38,7 @@ class TestParseArgs:
         assert args.record is True
         assert args.output_dir == output_dir
         assert args.planner == "gradient"
+        assert args.viewer == "cv2"
 
     @pytest.mark.parametrize("choice", ["cem", "gradient", "hierarchical"])
     def test_parse_args_planner_choices(self, choice: str) -> None:
@@ -53,6 +55,31 @@ class TestParseArgs:
                 "--checkpoint", "model.pt",
                 "--goal-frame", "goal.png",
                 "--planner", "invalid",
+            ])
+
+    @pytest.mark.smoke
+    def test_parse_args_viewer_none(self) -> None:
+        args = parse_args([
+            "--checkpoint", "model.pt",
+            "--goal-frame", "goal.png",
+            "--viewer", "none",
+        ])
+        assert args.viewer == "none"
+
+    def test_parse_args_no_viewer_alias(self) -> None:
+        args = parse_args([
+            "--checkpoint", "model.pt",
+            "--goal-frame", "goal.png",
+            "--no-viewer",
+        ])
+        assert args.viewer == "none"
+
+    def test_parse_args_invalid_viewer(self) -> None:
+        with pytest.raises(SystemExit):
+            parse_args([
+                "--checkpoint", "model.pt",
+                "--goal-frame", "goal.png",
+                "--viewer", "invalid",
             ])
 
 

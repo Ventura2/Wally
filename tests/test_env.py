@@ -44,6 +44,25 @@ class TestMineStudioEnv:
         assert info == {}
         sim.step.assert_called_once_with({"forward": 1})
 
+    @pytest.mark.smoke
+    def test_step_exposes_pov_in_info(self, mock_sim):
+        env, sim, _ = mock_sim
+        pov = np.zeros((360, 640, 3), dtype=np.uint8)
+        sim.step.return_value = (
+            {
+                "image": np.ones((224, 224, 3), dtype=np.uint8),
+                "pov": pov,
+            },
+            0.0,
+            False,
+            False,
+            {},
+        )
+        _, _, _, info = env.step({"forward": 1})
+        assert "pov" in info
+        assert info["pov"] is pov
+        assert info["pov"].shape == (360, 640, 3)
+
     def test_step_combines_terminated_truncated(self, mock_sim):
         env, sim, _ = mock_sim
         sim.step.return_value = (

@@ -7,7 +7,7 @@ from src.collector.config import CollectorConfig
 
 try:
     from minestudio.simulator import MinecraftSim as _MinecraftSim
-except ImportError:
+except (ImportError, OSError):
     _MinecraftSim = None
 
 
@@ -37,6 +37,9 @@ class MineStudioEnv:
     ) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         obs_dict, reward, terminated, truncated, info = self._sim.step(action)
         done = terminated or truncated
+        info = dict(info)
+        if "pov" in obs_dict:
+            info["pov"] = obs_dict["pov"]
         return obs_dict["image"], reward, done, info
 
     def close(self) -> None:

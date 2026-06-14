@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 import torch
 
 from agent.config import AgentConfig
@@ -163,3 +164,64 @@ class TestAgentLoopRecordingDisabled:
         result = loop.run_episode(goal_frame=torch.rand(3, 64, 64))
 
         assert result.trajectory is None
+
+
+class _RecordingViewer:
+    def __init__(self, quit_at: int | None = None) -> None:
+        self.shows: list = []
+        self.close_count = 0
+        self._quit_at = quit_at
+        self._calls = 0
+
+    def show(self, pov, info=None) -> None:
+        self.shows.append((pov, info))
+        self._calls += 1
+
+    def should_quit(self) -> bool:
+        if self._quit_at is not None and self._calls >= self._quit_at:
+            return True
+        return False
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class TestAgentLoopViewer:
+    @pytest.mark.smoke
+    def test_show_called_per_step(self) -> None:
+        env = _make_env(num_steps=20)
+        planner = _make_planner()
+        config = AgentConfig(episode_timeout=5, replan_interval=4)
+        viewer = _RecordingViewer()
+        loop = AgentLoop(env, planner, config, viewer=viewer)
+
+        result = loop.run_episode(goal_frame=torch.rand(3, 64, 64))
+
+        assert result.steps == 5
+        assert result.interrupted is False
+        assert len(viewer.shows) == 5
+        assert viewer.close_count == 1
+
+    def test_breaks_on_should_quit(self) -> None:
+        env = _make_env(num_steps=20)
+        planner = _make_planner()
+        config = AgentConfig(episode_timeout=100, replan_interval=4)
+        viewer = _RecordingViewer(quit_at=3)
+        loop = AgentLoop(env, planner, config, viewer=viewer)
+
+        result = loop.run_episode(goal_frame=torch.rand(3, 64, 64))
+
+        assert result.interrupted is True
+        assert result.steps == 3
+        assert len(viewer.shows) == 3
+        assert viewer.close_count == 1
+
+    def test_default_viewer_is_null(self) -> None:
+        env = _make_env(num_steps=20)
+        planner = _make_planner()
+        config = AgentConfig(episode_timeout=5, replan_interval=4)
+        loop = AgentLoop(env, planner, config)
+        assert loop._viewer is not None
+        from agent.viewer import NullViewer
+
+        assert isinstance(loop._viewer, NullViewer)
