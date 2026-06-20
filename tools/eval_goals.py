@@ -509,8 +509,8 @@ class MineStudioBackend(EpisodeRunner):
 
     def __init__(self, *args: Any, task: str | None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        from src.collector.config import CollectorConfig
-        from src.collector.env import MineStudioEnv
+        from wally.collector.config import CollectorConfig
+        from wally.collector.env import MineStudioEnv
         from wally.planner.actions import (
             MineStudioActionVocab,
             continuous_to_discrete,

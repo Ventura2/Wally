@@ -1,5 +1,5 @@
-from agent.loop import AgentLoop
-from agent.protocol import (
+from wally.agent.loop import AgentLoop
+from wally.agent.protocol import (
     EpisodeResult,
     FlatPlannerAdapter,
     HierarchicalPlannerAdapter,

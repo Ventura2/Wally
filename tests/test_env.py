@@ -2,12 +2,12 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from src.collector.config import CollectorConfig
+from wally.collector.config import CollectorConfig
 
 
 @pytest.fixture
 def mock_sim():
-    with patch("src.collector.env._MinecraftSim") as mock:
+    with patch("wally.collector.env._MinecraftSim") as mock:
         sim = mock.return_value
         sim.reset.return_value = (
             {"image": np.zeros((224, 224, 3), dtype=np.uint8)},
@@ -20,7 +20,7 @@ def mock_sim():
             False,
             {},
         )
-        from src.collector.env import MineStudioEnv
+        from wally.collector.env import MineStudioEnv
 
         config = CollectorConfig()
         env = MineStudioEnv(config)
@@ -96,8 +96,8 @@ class TestMineStudioEnv:
         sim.close.assert_called_once()
 
     def test_raises_when_minestudio_missing(self):
-        with patch("src.collector.env._MinecraftSim", None):
+        with patch("wally.collector.env._MinecraftSim", None):
             with pytest.raises(ImportError, match="MineStudio is not installed"):
-                from src.collector.env import MineStudioEnv
+                from wally.collector.env import MineStudioEnv
 
                 MineStudioEnv(CollectorConfig())

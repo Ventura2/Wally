@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 import torch
 
-from deployer.config import DeployConfig, ReconnectConfig
-from deployer.connector import ServerConnector
-from deployer.env import ServerEnv
-from deployer.session import SessionManager
+from wally.deployer.config import DeployConfig, ReconnectConfig
+from wally.deployer.connector import ServerConnector
+from wally.deployer.env import ServerEnv
+from wally.deployer.session import SessionManager
 
 
 class TestDeploymentPipeline:
@@ -19,9 +19,9 @@ class TestDeploymentPipeline:
         )
 
         with (
-            patch("deployer.env.ServerConnector") as mock_conn_cls,
-            patch("deployer.env.FrameRenderer") as mock_renderer_cls,
-            patch("deployer.env.SafetyFilter") as mock_safety_cls,
+            patch("wally.deployer.env.ServerConnector") as mock_conn_cls,
+            patch("wally.deployer.env.FrameRenderer") as mock_renderer_cls,
+            patch("wally.deployer.env.SafetyFilter") as mock_safety_cls,
         ):
             mock_connector = MagicMock()
             mock_connector.connection = MagicMock()
@@ -62,10 +62,10 @@ class TestDeploymentPipeline:
         )
 
         with (
-            patch("deployer.env.ServerConnector") as mock_conn_cls,
-            patch("deployer.env.FrameRenderer") as mock_renderer_cls,
-            patch("deployer.env.SafetyFilter") as mock_safety_cls,
-            patch("deployer.env.ActionExecutor") as mock_executor_cls,
+            patch("wally.deployer.env.ServerConnector") as mock_conn_cls,
+            patch("wally.deployer.env.FrameRenderer") as mock_renderer_cls,
+            patch("wally.deployer.env.SafetyFilter") as mock_safety_cls,
+            patch("wally.deployer.env.ActionExecutor") as mock_executor_cls,
         ):
             mock_connector = MagicMock()
             mock_connector.connection = MagicMock()
@@ -109,9 +109,9 @@ class TestDeploymentPipeline:
         )
 
         with (
-            patch("deployer.env.ServerConnector") as mock_conn_cls,
-            patch("deployer.env.FrameRenderer") as mock_renderer_cls,
-            patch("deployer.env.SafetyFilter") as mock_safety_cls,
+            patch("wally.deployer.env.ServerConnector") as mock_conn_cls,
+            patch("wally.deployer.env.FrameRenderer") as mock_renderer_cls,
+            patch("wally.deployer.env.SafetyFilter") as mock_safety_cls,
         ):
             mock_connector = MagicMock()
             mock_connector.connection = MagicMock()
@@ -144,8 +144,8 @@ class TestDeploymentPipeline:
         )
 
         with (
-            patch("deployer.env.ServerConnector") as mock_conn_cls,
-            patch("deployer.env.FrameRenderer") as mock_renderer_cls,
+            patch("wally.deployer.env.ServerConnector") as mock_conn_cls,
+            patch("wally.deployer.env.FrameRenderer") as mock_renderer_cls,
         ):
             mock_connector = MagicMock()
             mock_connector.connection = MagicMock()
@@ -168,8 +168,8 @@ class TestDeploymentPipeline:
         )
 
         with (
-            patch("deployer.env.ServerConnector") as mock_conn_cls,
-            patch("deployer.env.FrameRenderer") as mock_renderer_cls,
+            patch("wally.deployer.env.ServerConnector") as mock_conn_cls,
+            patch("wally.deployer.env.FrameRenderer") as mock_renderer_cls,
         ):
             mock_connector = MagicMock()
             mock_connector.connection = MagicMock()
@@ -194,8 +194,8 @@ class TestDeploymentPipeline:
         )
 
         with (
-            patch("deployer.env.ServerConnector") as mock_conn_cls,
-            patch("deployer.env.FrameRenderer") as mock_renderer_cls,
+            patch("wally.deployer.env.ServerConnector") as mock_conn_cls,
+            patch("wally.deployer.env.FrameRenderer") as mock_renderer_cls,
         ):
             mock_connector = MagicMock()
             mock_connector.connection = MagicMock()

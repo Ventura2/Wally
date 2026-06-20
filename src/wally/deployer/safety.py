@@ -7,7 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from deployer.config import SafetyConfig
+from wally.deployer.config import SafetyConfig
 
 logger = logging.getLogger(__name__)
 

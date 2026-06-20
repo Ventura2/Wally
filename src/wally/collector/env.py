@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 import numpy as np
-from src.collector.config import CollectorConfig
+from wally.collector.config import CollectorConfig
 
 try:
     from minestudio.simulator import MinecraftSim as _MinecraftSim

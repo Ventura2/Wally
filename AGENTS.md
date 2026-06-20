@@ -32,17 +32,17 @@ Wally uses **two separate Python environments** depending on the task:
 
 ### WSL2 (collector and `wally-play --relay`)
 
-The collector uses `uv` inside the Podman container; the photoreal `wally-play --relay` workflow also runs inside the same `wally-dev` container. See `src/collector/AGENTS.md` for collector quirks and `docs/live-viewer.md#wally-play-in-wsl2` for the relay command.
+The collector uses `uv` inside the Podman container; the photoreal `wally-play --relay` workflow also runs inside the same `wally-dev` container. See `src/wally/collector/AGENTS.md` for collector quirks and `docs/live-viewer.md#wally-play-in-wsl2` for the relay command.
 
 ## Project structure
 
-Application code lives in `src/`:
-- `src/collector/` — trajectory collection (MineStudio container only; see `src/collector/AGENTS.md`)
-- `src/deployer/` — Minecraft server deployment (voxel renderer, action throttling, safety filters, ServerEnv adapter, CLI)
-- `src/exporter/` — WebDataset shard export (`ShardWriter`, `generate_manifest`) — legacy, used by tests
-- `src/validator/` — shard inspection and validation CLI (`inspect`, `validate`, `samples`)
-- `src/wally/` — LeWorldModel training pipeline (encoder, predictor, planner, trainer; see `src/wally/AGENTS.md`)
-- `src/agent/` — goal-conditioned agent loop, viewer, MJPEG POV relay, play CLI (see `src/agent/AGENTS.md`)
+Application code lives under `src/wally/`. Subpackages:
+- `src/wally/collector/` — trajectory collection (MineStudio container only; see `src/wally/collector/AGENTS.md`)
+- `src/wally/deployer/` — Minecraft server deployment (voxel renderer, action throttling, safety filters, ServerEnv adapter, CLI)
+- `src/wally/exporter/` — WebDataset shard export (`ShardWriter`, `generate_manifest`) — legacy, used by tests
+- `src/wally/validator/` — shard inspection and validation CLI (`inspect`, `validate`, `samples`)
+- `src/wally/training/`, `src/wally/models/`, `src/wally/planner/`, `src/wally/data/`, `src/wally/config/`, `src/wally/cli/` — LeWorldModel training pipeline (see `src/wally/AGENTS.md`)
+- `src/wally/agent/` — goal-conditioned agent loop, viewer, MJPEG POV relay, play CLI (see `src/wally/agent/AGENTS.md`)
 - `tools/` — standalone scripts (not entry points): `loss_dashboard.py`, `eval_goals.py`, `test_live_viewer.py`, plus ad-hoc shard inspection / repacking / verification scripts
 
 Tests live in `tests/` covering all packages plus an end-to-end integration test.
@@ -93,8 +93,8 @@ All feature work goes through OpenSpec. Workflow: see `docs/openspec-workflow.md
 
 This file is the slim root. Subpackage-specific rules apply on top and are auto-loaded via the directory walk:
 
-- `src/agent/AGENTS.md` — agent loop, viewer, MJPEG relay
-- `src/collector/AGENTS.md` — MineStudio container quirks
+- `src/wally/agent/AGENTS.md` — agent loop, viewer, MJPEG relay
+- `src/wally/collector/AGENTS.md` — MineStudio container quirks
 - `src/wally/AGENTS.md` — training, predictor, data format, checkpoint compat
 
 All `docs/*.md` files are **on-demand** — read with the Read tool when a cross-reference in the files above is relevant to the task at hand. Do not preemptively load them.

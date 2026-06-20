@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent.play import main, parse_args
+from wally.agent.play import main, parse_args
 
 
 class TestParseArgs:
@@ -114,8 +114,8 @@ class TestParseArgs:
         assert args.relay_min_frame_interval_ms == 16
 
     def test_apply_relay_args_populates_config(self) -> None:
-        from agent.config import AgentConfig
-        from agent.play import _apply_relay_args, _parse_max_size
+        from wally.agent.config import AgentConfig
+        from wally.agent.play import _apply_relay_args, _parse_max_size
 
         args = parse_args([
             "--checkpoint", "model.pt",
@@ -181,7 +181,7 @@ class TestMain:
             "--config", str(config_path),
         ])
 
-        from agent.config import AgentConfig
+        from wally.agent.config import AgentConfig
 
         loaded = AgentConfig.from_yaml(args.config)
         assert loaded.replan_interval == 8
@@ -231,7 +231,7 @@ class TestRelayEndToEnd:
                 return None
 
         fake_env = _FakeEnv()
-        monkeypatch.setattr("agent.env.MineStudioAgentEnv", lambda c: fake_env)
+        monkeypatch.setattr("wally.agent.env.MineStudioAgentEnv", lambda c: fake_env)
 
         fake_model = MagicMock()
         fake_model.encode = MagicMock()
@@ -243,16 +243,16 @@ class TestRelayEndToEnd:
         class _FakeRolloutFactory:
             from_checkpoint = staticmethod(lambda ckpt: _FakeRollout(ckpt))
 
-        monkeypatch.setattr("agent.play.LatentRollout", _FakeRolloutFactory)
+        monkeypatch.setattr("wally.agent.play.LatentRollout", _FakeRolloutFactory)
 
         class _FakePlanner:
             def plan(self, current_frame, goal_frame):
-                from agent.protocol import PlanResult
+                from wally.agent.protocol import PlanResult
 
                 return PlanResult(actions=torch.zeros(2, 25), cost=0.0)
 
         monkeypatch.setattr(
-            "agent.play.build_planner",
+            "wally.agent.play.build_planner",
             lambda *a, **k: _FakePlanner(),
         )
 

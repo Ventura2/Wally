@@ -8,8 +8,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from deployer.config import ReconnectConfig
-from deployer.connector import ServerConnector
+from wally.deployer.config import ReconnectConfig
+from wally.deployer.connector import ServerConnector
 
 logger = logging.getLogger(__name__)
 

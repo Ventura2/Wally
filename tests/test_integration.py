@@ -8,12 +8,12 @@ import tarfile
 from pathlib import Path
 
 import numpy as np
-from src.collector.buffer import TrajectoryBuffer
-from src.collector.config import CollectorConfig
-from src.collector.recorder import TransitionRecorder
-from src.exporter.metadata import generate_manifest
-from src.exporter.shard_writer import ShardWriter
-from src.validator.inspector import inspect_shard, validate_shard
+from wally.collector.buffer import TrajectoryBuffer
+from wally.collector.config import CollectorConfig
+from wally.collector.recorder import TransitionRecorder
+from wally.exporter.metadata import generate_manifest
+from wally.exporter.shard_writer import ShardWriter
+from wally.validator.inspector import inspect_shard, validate_shard
 
 
 class MockMineStudioEnv:

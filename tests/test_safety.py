@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from deployer.config import SafetyConfig
+from wally.deployer.config import SafetyConfig
 
 
 class TestBedrockFilter:
     def test_blocks_breaking_bedrock(self):
-        from deployer.safety import ActionContext, BedrockFilter
+        from wally.deployer.safety import ActionContext, BedrockFilter
 
         f = BedrockFilter()
         ctx = ActionContext(
@@ -18,7 +18,7 @@ class TestBedrockFilter:
         assert f.check(ctx) is False
 
     def test_allows_breaking_non_bedrock(self):
-        from deployer.safety import ActionContext, BedrockFilter
+        from wally.deployer.safety import ActionContext, BedrockFilter
 
         f = BedrockFilter()
         ctx = ActionContext(
@@ -29,7 +29,7 @@ class TestBedrockFilter:
         assert f.check(ctx) is True
 
     def test_allows_non_break_actions_on_bedrock(self):
-        from deployer.safety import ActionContext, BedrockFilter
+        from wally.deployer.safety import ActionContext, BedrockFilter
 
         f = BedrockFilter()
         ctx = ActionContext(
@@ -40,14 +40,14 @@ class TestBedrockFilter:
         assert f.check(ctx) is True
 
     def test_name_is_bedrock(self):
-        from deployer.safety import BedrockFilter
+        from wally.deployer.safety import BedrockFilter
 
         assert BedrockFilter().name == "bedrock"
 
 
 class TestLavaFilter:
     def test_blocks_placement_adjacent_to_lava(self):
-        from deployer.safety import ActionContext, LavaFilter
+        from wally.deployer.safety import ActionContext, LavaFilter
 
         f = LavaFilter()
         ctx = ActionContext(
@@ -58,7 +58,7 @@ class TestLavaFilter:
         assert f.check(ctx) is False
 
     def test_blocks_placement_adjacent_to_still_lava(self):
-        from deployer.safety import ActionContext, LavaFilter
+        from wally.deployer.safety import ActionContext, LavaFilter
 
         f = LavaFilter()
         ctx = ActionContext(
@@ -69,7 +69,7 @@ class TestLavaFilter:
         assert f.check(ctx) is False
 
     def test_allows_placement_not_adjacent_to_lava(self):
-        from deployer.safety import ActionContext, LavaFilter
+        from wally.deployer.safety import ActionContext, LavaFilter
 
         f = LavaFilter()
         ctx = ActionContext(
@@ -80,7 +80,7 @@ class TestLavaFilter:
         assert f.check(ctx) is True
 
     def test_allows_non_place_actions_near_lava(self):
-        from deployer.safety import ActionContext, LavaFilter
+        from wally.deployer.safety import ActionContext, LavaFilter
 
         f = LavaFilter()
         ctx = ActionContext(
@@ -91,21 +91,21 @@ class TestLavaFilter:
         assert f.check(ctx) is True
 
     def test_allows_place_with_no_adjacent_info(self):
-        from deployer.safety import ActionContext, LavaFilter
+        from wally.deployer.safety import ActionContext, LavaFilter
 
         f = LavaFilter()
         ctx = ActionContext(action_type="place", adjacent_block_ids=None)
         assert f.check(ctx) is True
 
     def test_name_is_lava(self):
-        from deployer.safety import LavaFilter
+        from wally.deployer.safety import LavaFilter
 
         assert LavaFilter().name == "lava"
 
 
 class TestVoidFilter:
     def test_blocks_when_player_below_threshold(self):
-        from deployer.safety import ActionContext, VoidFilter
+        from wally.deployer.safety import ActionContext, VoidFilter
 
         f = VoidFilter(threshold=-64.0)
         ctx = ActionContext(
@@ -115,7 +115,7 @@ class TestVoidFilter:
         assert f.check(ctx) is False
 
     def test_allows_when_player_above_threshold(self):
-        from deployer.safety import ActionContext, VoidFilter
+        from wally.deployer.safety import ActionContext, VoidFilter
 
         f = VoidFilter(threshold=-64.0)
         ctx = ActionContext(
@@ -125,7 +125,7 @@ class TestVoidFilter:
         assert f.check(ctx) is True
 
     def test_allows_when_player_at_threshold(self):
-        from deployer.safety import ActionContext, VoidFilter
+        from wally.deployer.safety import ActionContext, VoidFilter
 
         f = VoidFilter(threshold=-64.0)
         ctx = ActionContext(
@@ -135,7 +135,7 @@ class TestVoidFilter:
         assert f.check(ctx) is True
 
     def test_custom_threshold(self):
-        from deployer.safety import ActionContext, VoidFilter
+        from wally.deployer.safety import ActionContext, VoidFilter
 
         f = VoidFilter(threshold=0.0)
         ctx_below = ActionContext(
@@ -150,21 +150,21 @@ class TestVoidFilter:
         assert f.check(ctx_above) is True
 
     def test_allows_when_no_player_position(self):
-        from deployer.safety import ActionContext, VoidFilter
+        from wally.deployer.safety import ActionContext, VoidFilter
 
         f = VoidFilter()
         ctx = ActionContext(action_type="move", player_position=None)
         assert f.check(ctx) is True
 
     def test_name_is_void(self):
-        from deployer.safety import VoidFilter
+        from wally.deployer.safety import VoidFilter
 
         assert VoidFilter().name == "void"
 
 
 class TestCooldownFilter:
     def test_blocks_action_within_cooldown_window(self):
-        from deployer.safety import ActionContext, CooldownFilter
+        from wally.deployer.safety import ActionContext, CooldownFilter
 
         f = CooldownFilter(cooldown_ms=100)
         ctx = ActionContext(action_type="break")
@@ -172,12 +172,12 @@ class TestCooldownFilter:
         assert f.check(ctx) is False
 
     def test_allows_action_after_cooldown_expires(self):
-        from deployer.safety import ActionContext, CooldownFilter
+        from wally.deployer.safety import ActionContext, CooldownFilter
 
         f = CooldownFilter(cooldown_ms=50)
         ctx = ActionContext(action_type="break")
 
-        with patch("deployer.safety.time") as mock_time:
+        with patch("wally.deployer.safety.time") as mock_time:
             mock_time.monotonic.return_value = 1.0
             assert f.check(ctx) is True
 
@@ -185,7 +185,7 @@ class TestCooldownFilter:
             assert f.check(ctx) is True
 
     def test_different_action_types_have_independent_cooldowns(self):
-        from deployer.safety import ActionContext, CooldownFilter
+        from wally.deployer.safety import ActionContext, CooldownFilter
 
         f = CooldownFilter(cooldown_ms=100)
         ctx_break = ActionContext(action_type="break")
@@ -197,15 +197,15 @@ class TestCooldownFilter:
         assert f.check(ctx_place) is False
 
     def test_name_is_cooldown(self):
-        from deployer.safety import CooldownFilter
+        from wally.deployer.safety import CooldownFilter
 
         assert CooldownFilter().name == "cooldown"
 
 
 class TestSafetyFilterComposite:
     def test_all_filters_enabled_by_default(self):
-        sf = __import__("deployer.safety", fromlist=["SafetyFilter"]).SafetyFilter()
-        ctx = __import__("deployer.safety", fromlist=["ActionContext"]).ActionContext(
+        sf = __import__("wally.deployer.safety", fromlist=["SafetyFilter"]).SafetyFilter()
+        ctx = __import__("wally.deployer.safety", fromlist=["ActionContext"]).ActionContext(
             action_type="break",
             target_block_id=7,
             target_position=(0, 0, 0),
@@ -213,7 +213,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is False
 
     def test_disabling_filter_allows_previously_blocked_action(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         sf = SafetyFilter()
         sf.set_enabled("bedrock", False)
@@ -225,7 +225,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is True
 
     def test_violation_logging(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         sf = SafetyFilter()
         ctx = ActionContext(
@@ -240,7 +240,7 @@ class TestSafetyFilterComposite:
         assert "break" in violations[0]
 
     def test_config_driven_disable_bedrock(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         cfg = SafetyConfig(prevent_bedrock_breaking=False)
         sf = SafetyFilter(config=cfg)
@@ -252,7 +252,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is True
 
     def test_config_driven_disable_lava(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         cfg = SafetyConfig(prevent_lava_interaction=False)
         sf = SafetyFilter(config=cfg)
@@ -264,7 +264,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is True
 
     def test_config_driven_disable_void(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         cfg = SafetyConfig(prevent_void_fall=False)
         sf = SafetyFilter(config=cfg)
@@ -275,7 +275,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is True
 
     def test_safe_action_passes_all_filters(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         sf = SafetyFilter()
         ctx = ActionContext(
@@ -285,7 +285,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is True
 
     def test_multiple_violations_tracked(self):
-        from deployer.safety import ActionContext, SafetyFilter
+        from wally.deployer.safety import ActionContext, SafetyFilter
 
         sf = SafetyFilter()
         ctx1 = ActionContext(
@@ -304,7 +304,7 @@ class TestSafetyFilterComposite:
         assert len(violations) == 2
 
     def test_register_custom_filter(self):
-        from deployer.safety import (
+        from wally.deployer.safety import (
             ActionContext,
             SafetyFilter,
             SafetyFilterBase,
@@ -324,7 +324,7 @@ class TestSafetyFilterComposite:
         assert sf.check(ctx) is False
 
     def test_violation_log_returns_copy(self):
-        from deployer.safety import SafetyFilter
+        from wally.deployer.safety import SafetyFilter
 
         sf = SafetyFilter()
         log1 = sf.get_violation_log()

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from agent.protocol import (
+from wally.agent.protocol import (
     EpisodeResult,
     FlatPlannerAdapter,
     HierarchicalPlannerAdapter,

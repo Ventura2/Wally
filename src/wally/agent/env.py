@@ -7,9 +7,9 @@ import torch
 from PIL import Image
 from torch import Tensor
 
-from agent.config import AgentConfig
-from collector.config import CollectorConfig
-from collector.env import MineStudioEnv
+from wally.agent.config import AgentConfig
+from wally.collector.config import CollectorConfig
+from wally.collector.env import MineStudioEnv
 from wally.planner.actions import (
     MineStudioActionVocab,
     continuous_to_discrete,

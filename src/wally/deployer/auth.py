@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from deployer.config import DeployConfig
+from wally.deployer.config import DeployConfig
 
 logger = logging.getLogger(__name__)
 

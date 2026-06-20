@@ -3,7 +3,7 @@ from __future__ import annotations
 import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from deployer.shutdown import GracefulShutdown
+from wally.deployer.shutdown import GracefulShutdown
 
 
 def _make_mocks() -> tuple[MagicMock, AsyncMock, MagicMock]:
@@ -18,7 +18,7 @@ class TestGracefulShutdown:
         shutdown = GracefulShutdown()
         session_manager, throttler, connector = _make_mocks()
 
-        with patch("deployer.shutdown.signal.signal") as mock_signal:
+        with patch("wally.deployer.shutdown.signal.signal") as mock_signal:
             shutdown.register(session_manager, throttler, connector)
             assert mock_signal.call_count == 2
             mock_signal.assert_any_call(signal.SIGINT, shutdown._handle_signal)
@@ -30,10 +30,10 @@ class TestGracefulShutdown:
 
         with (
             patch(
-                "deployer.shutdown.signal.getsignal",
+                "wally.deployer.shutdown.signal.getsignal",
                 return_value="original_handler",
             ),
-            patch("deployer.shutdown.signal.signal"),
+            patch("wally.deployer.shutdown.signal.signal"),
         ):
             shutdown.register(session_manager, throttler, connector)
             assert shutdown._original_sigint == "original_handler"
@@ -45,21 +45,21 @@ class TestGracefulShutdown:
 
         with (
             patch(
-                "deployer.shutdown.signal.getsignal",
+                "wally.deployer.shutdown.signal.getsignal",
                 return_value="original_handler",
             ),
-            patch("deployer.shutdown.signal.signal") as mock_signal,
+            patch("wally.deployer.shutdown.signal.signal") as mock_signal,
         ):
             shutdown.register(session_manager, throttler, connector)
 
-        with patch("deployer.shutdown.signal.signal") as mock_signal:
+        with patch("wally.deployer.shutdown.signal.signal") as mock_signal:
             shutdown.unregister()
             mock_signal.assert_any_call(signal.SIGINT, "original_handler")
             mock_signal.assert_any_call(signal.SIGTERM, "original_handler")
 
     def test_unregister_noop_when_not_registered(self):
         shutdown = GracefulShutdown()
-        with patch("deployer.shutdown.signal.signal") as mock_signal:
+        with patch("wally.deployer.shutdown.signal.signal") as mock_signal:
             shutdown.unregister()
             mock_signal.assert_not_called()
 
@@ -212,7 +212,7 @@ class TestSignalHandling:
 
         throttler.stop = _mock_stop
 
-        with patch("deployer.shutdown.sys.exit") as mock_exit:
+        with patch("wally.deployer.shutdown.sys.exit") as mock_exit:
             shutdown._handle_signal(signal.SIGINT, None)
 
         session_manager.shutdown.assert_called_once()
@@ -231,7 +231,7 @@ class TestSignalHandling:
 
         throttler.stop = _mock_stop
 
-        with patch("deployer.shutdown.sys.exit") as mock_exit:
+        with patch("wally.deployer.shutdown.sys.exit") as mock_exit:
             shutdown._handle_signal(signal.SIGTERM, None)
 
         session_manager.shutdown.assert_called_once()

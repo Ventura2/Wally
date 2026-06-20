@@ -1,6 +1,6 @@
 import json
 
-from src.exporter.metadata import generate_manifest
+from wally.exporter.metadata import generate_manifest
 
 
 class TestGenerateManifestCreatesFile:

@@ -5,17 +5,8 @@ import logging
 import sys
 from pathlib import Path
 
-import yaml
-
-# collector/validator/exporter use `src.` prefix imports; ensure src is on path
-# __file__ = src/wally/cli/collect.py → need project root (4 levels up) so that
-# `from src.collector...` resolves to src/collector/
-_project_root = Path(__file__).resolve().parent.parent.parent.parent
-if _project_root.is_dir() and str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-from src.collector.collector import TrajectoryCollector  # noqa: E402
-from src.collector.config import CollectorConfig, load_config  # noqa: E402
+from wally.collector.collector import TrajectoryCollector
+from wally.collector.config import CollectorConfig, load_config
 
 logger = logging.getLogger(__name__)
 

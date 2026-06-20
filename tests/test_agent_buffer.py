@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from src.agent.buffer import TrajectoryBuffer
+from wally.agent.buffer import TrajectoryBuffer
 
 
 class TestTrajectoryBufferAddAndToDict:

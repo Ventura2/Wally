@@ -4,7 +4,7 @@ import logging
 
 import numpy as np
 
-from deployer.executor import ACTION_DIM, ActionExecutor
+from wally.deployer.executor import ACTION_DIM, ActionExecutor
 
 
 class TestActionValidation:

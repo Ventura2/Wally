@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from deployer.executor import ACTION_DIM, ActionExecutor
-from deployer.session import SessionManager
+from wally.deployer.executor import ACTION_DIM, ActionExecutor
+from wally.deployer.session import SessionManager
 
 
 class _MockConnection:

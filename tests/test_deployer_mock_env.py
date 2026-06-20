@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import torch
 
-from deployer.config import DeployConfig
-from deployer.env import MockServerEnv
+from wally.deployer.config import DeployConfig
+from wally.deployer.env import MockServerEnv
 
 
 def _make_env() -> MockServerEnv:

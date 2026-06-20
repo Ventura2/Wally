@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from deployer.config import DeployConfig
+from wally.deployer.config import DeployConfig
 
 
 def _make_env() -> tuple:
@@ -29,14 +29,14 @@ def _make_env() -> tuple:
     mock_throttler = MagicMock()
 
     with (
-        patch("deployer.env.ServerConnector", return_value=mock_connector),
-        patch("deployer.env.SessionManager", return_value=mock_session),
-        patch("deployer.env.ActionExecutor", return_value=mock_executor),
-        patch("deployer.env.FrameRenderer", return_value=mock_renderer),
-        patch("deployer.env.SafetyFilter", return_value=mock_safety),
-        patch("deployer.env.ActionThrottler", return_value=mock_throttler),
+        patch("wally.deployer.env.ServerConnector", return_value=mock_connector),
+        patch("wally.deployer.env.SessionManager", return_value=mock_session),
+        patch("wally.deployer.env.ActionExecutor", return_value=mock_executor),
+        patch("wally.deployer.env.FrameRenderer", return_value=mock_renderer),
+        patch("wally.deployer.env.SafetyFilter", return_value=mock_safety),
+        patch("wally.deployer.env.ActionThrottler", return_value=mock_throttler),
     ):
-        from deployer.env import ServerEnv
+        from wally.deployer.env import ServerEnv
 
         config = DeployConfig.default()
         env = ServerEnv(config)
@@ -146,18 +146,18 @@ class TestServerEnvStep:
     @pytest.mark.smoke
     def test_safety_violation_info_includes_pov(self):
         env, _, _, _, mock_renderer, _ = _make_env()
-        with patch("deployer.env.SafetyFilter") as mock_safety_cls:
+        with patch("wally.deployer.env.SafetyFilter") as mock_safety_cls:
             mock_safety = MagicMock()
             mock_safety.check.return_value = False
             mock_safety_cls.return_value = mock_safety
             with (
-                patch("deployer.env.ServerConnector", return_value=MagicMock()),
-                patch("deployer.env.SessionManager", return_value=MagicMock()),
-                patch("deployer.env.ActionExecutor", return_value=MagicMock()),
-                patch("deployer.env.FrameRenderer", return_value=mock_renderer),
-                patch("deployer.env.ActionThrottler", return_value=MagicMock()),
+                patch("wally.deployer.env.ServerConnector", return_value=MagicMock()),
+                patch("wally.deployer.env.SessionManager", return_value=MagicMock()),
+                patch("wally.deployer.env.ActionExecutor", return_value=MagicMock()),
+                patch("wally.deployer.env.FrameRenderer", return_value=mock_renderer),
+                patch("wally.deployer.env.ActionThrottler", return_value=MagicMock()),
             ):
-                from deployer.env import ServerEnv
+                from wally.deployer.env import ServerEnv
                 env2 = ServerEnv(DeployConfig.default())
             env2.reset()
             _obs, _r, _d, info = env2.step(torch.zeros(25))

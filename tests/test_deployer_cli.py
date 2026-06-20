@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deployer.cli import main, parse_args
+from wally.deployer.cli import main, parse_args
 
 
 def _make_paths(tmp_path: Path) -> tuple[Path, Path]:
@@ -150,10 +150,10 @@ class TestMainConfig:
             ])
         assert exc_info.value.code == 1
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     def test_main_mock_runs_episode(  # noqa: E501
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
     ):
@@ -161,7 +161,7 @@ class TestMainConfig:
         mock_env = MagicMock()
         mock_env_cls.return_value = mock_env
         mock_loop = MagicMock()
-        from agent.protocol import EpisodeResult
+        from wally.agent.protocol import EpisodeResult
         mock_loop.run_episode.return_value = EpisodeResult(
             steps=2, final_cost=0.5, duration_seconds=0.1
         )
@@ -176,10 +176,10 @@ class TestMainConfig:
         mock_env_cls.assert_called_once()
         mock_env.close.assert_called_once()
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     @pytest.mark.smoke
     def test_main_default_viewer_is_null_when_no_viewer(
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
@@ -189,7 +189,7 @@ class TestMainConfig:
         mock_loop_cls.return_value = MagicMock(
             run_episode=MagicMock(return_value=MagicMock(steps=0, final_cost=0.0, duration_seconds=0.0))
         )
-        from agent.viewer import NullViewer
+        from wally.agent.viewer import NullViewer
 
         main([
             "--mock",
@@ -201,10 +201,10 @@ class TestMainConfig:
         viewer_kwarg = mock_loop_cls.call_args.kwargs.get("viewer")
         assert isinstance(viewer_kwarg, NullViewer)
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     @pytest.mark.smoke
     def test_main_explicit_cv2_constructs_frame_viewer(
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
@@ -214,7 +214,7 @@ class TestMainConfig:
         mock_loop_cls.return_value = MagicMock(
             run_episode=MagicMock(return_value=MagicMock(steps=0, final_cost=0.0, duration_seconds=0.0))
         )
-        from agent.viewer import FrameViewer
+        from wally.agent.viewer import FrameViewer
 
         main([
             "--mock",
@@ -227,10 +227,10 @@ class TestMainConfig:
         assert isinstance(viewer_kwarg, FrameViewer)
         assert viewer_kwarg._window_name == "wally-deploy"
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     def test_main_server_override(  # noqa: E501
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
     ):
@@ -238,7 +238,7 @@ class TestMainConfig:
         mock_env = MagicMock()
         mock_env_cls.return_value = mock_env
         mock_loop = MagicMock()
-        from agent.protocol import EpisodeResult
+        from wally.agent.protocol import EpisodeResult
         mock_loop.run_episode.return_value = EpisodeResult(
             steps=1, final_cost=0.0, duration_seconds=0.0
         )
@@ -255,10 +255,10 @@ class TestMainConfig:
         assert config_passed.server_host == "myhost"
         assert config_passed.server_port == 12345
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     def test_main_record_flag(  # noqa: E501
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
     ):
@@ -266,7 +266,7 @@ class TestMainConfig:
         mock_env = MagicMock()
         mock_env_cls.return_value = mock_env
         mock_loop = MagicMock()
-        from agent.protocol import EpisodeResult
+        from wally.agent.protocol import EpisodeResult
         mock_loop.run_episode.return_value = EpisodeResult(
             steps=1, final_cost=0.0, duration_seconds=0.0
         )
@@ -282,10 +282,10 @@ class TestMainConfig:
         config_passed = mock_env_cls.call_args[0][0]
         assert config_passed.record_trajectory is True
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     def test_main_config_yaml(  # noqa: E501
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
     ):
@@ -295,7 +295,7 @@ class TestMainConfig:
         mock_env = MagicMock()
         mock_env_cls.return_value = mock_env
         mock_loop = MagicMock()
-        from agent.protocol import EpisodeResult
+        from wally.agent.protocol import EpisodeResult
         mock_loop.run_episode.return_value = EpisodeResult(
             steps=1, final_cost=0.0, duration_seconds=0.0
         )
@@ -312,10 +312,10 @@ class TestMainConfig:
         assert config_passed.server_host == "yamlhost"
         assert config_passed.server_port == 11111
 
-    @patch("deployer.cli.AgentLoop")
-    @patch("deployer.cli.LatentRollout")
-    @patch("deployer.cli.build_planner")
-    @patch("deployer.env.MockServerEnv")
+    @patch("wally.deployer.cli.AgentLoop")
+    @patch("wally.deployer.cli.LatentRollout")
+    @patch("wally.deployer.cli.build_planner")
+    @patch("wally.deployer.env.MockServerEnv")
     def test_main_keyboard_interrupt(  # noqa: E501
         self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
     ):

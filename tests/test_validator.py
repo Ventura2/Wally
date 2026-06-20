@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from src.validator.inspector import inspect_shard, validate_shard
+from wally.validator.inspector import inspect_shard, validate_shard
 
 
 def _make_tar_shard(

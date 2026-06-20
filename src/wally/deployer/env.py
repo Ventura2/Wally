@@ -9,13 +9,13 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from deployer.config import DeployConfig
-from deployer.connector import ServerConnector
-from deployer.executor import ActionExecutor
-from deployer.frame_renderer import FrameRenderer
-from deployer.safety import ActionContext, SafetyFilter
-from deployer.session import SessionManager
-from deployer.throttler import ActionThrottler
+from wally.deployer.config import DeployConfig
+from wally.deployer.connector import ServerConnector
+from wally.deployer.executor import ActionExecutor
+from wally.deployer.frame_renderer import FrameRenderer
+from wally.deployer.safety import ActionContext, SafetyFilter
+from wally.deployer.session import SessionManager
+from wally.deployer.throttler import ActionThrottler
 
 logger = logging.getLogger(__name__)
 

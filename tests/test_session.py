@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from deployer.config import ReconnectConfig
-from deployer.session import SessionManager
+from wally.deployer.config import ReconnectConfig
+from wally.deployer.session import SessionManager
 
 
 def _make_connector() -> MagicMock:
@@ -115,7 +115,7 @@ class TestReconnectionBackoff:
             sleep_times.append(t)
 
         async def _run():
-            with patch("deployer.session.asyncio.sleep", side_effect=fake_sleep):
+            with patch("wally.deployer.session.asyncio.sleep", side_effect=fake_sleep):
                 await session._reconnect_loop()
 
         asyncio.run(_run())
@@ -140,7 +140,7 @@ class TestReconnectionBackoff:
             sleep_times.append(t)
 
         async def _run():
-            with patch("deployer.session.asyncio.sleep", side_effect=fake_sleep):
+            with patch("wally.deployer.session.asyncio.sleep", side_effect=fake_sleep):
                 await session._reconnect_loop()
 
         asyncio.run(_run())
@@ -158,7 +158,7 @@ class TestReconnectionBackoff:
             pass
 
         async def _run():
-            with patch("deployer.session.asyncio.sleep", side_effect=fake_sleep):
+            with patch("wally.deployer.session.asyncio.sleep", side_effect=fake_sleep):
                 await session._reconnect_loop()
 
         asyncio.run(_run())
@@ -189,7 +189,7 @@ class TestReconnectionBackoff:
             pass
 
         async def _run():
-            with patch("deployer.session.asyncio.sleep", side_effect=fake_sleep):
+            with patch("wally.deployer.session.asyncio.sleep", side_effect=fake_sleep):
                 await session._reconnect_loop()
 
         asyncio.run(_run())
@@ -211,7 +211,7 @@ class TestReconnectionBackoff:
             pass
 
         async def _run():
-            with patch("deployer.session.asyncio.sleep", side_effect=fake_sleep):
+            with patch("wally.deployer.session.asyncio.sleep", side_effect=fake_sleep):
                 await session._reconnect_loop()
 
         asyncio.run(_run())
@@ -229,8 +229,8 @@ class TestReconnectionBackoff:
         disconnect_cb = connector.on_disconnect.call_args[0][0]
 
         async def _run():
-            with patch("deployer.session.asyncio.sleep"):
-                with patch("deployer.session.asyncio.ensure_future") as mock_ensure:
+            with patch("wally.deployer.session.asyncio.sleep"):
+                with patch("wally.deployer.session.asyncio.ensure_future") as mock_ensure:
                     mock_ensure.return_value = MagicMock()
                     disconnect_cb("server closed")
                     mock_ensure.assert_called_once()
@@ -248,7 +248,7 @@ class TestReconnectionBackoff:
         session.shutdown()
         disconnect_cb = connector.on_disconnect.call_args[0][0]
 
-        with patch("deployer.session.asyncio.ensure_future") as mock_ensure:
+        with patch("wally.deployer.session.asyncio.ensure_future") as mock_ensure:
             mock_ensure.return_value = MagicMock()
             disconnect_cb("Client disconnected")
             mock_ensure.assert_not_called()

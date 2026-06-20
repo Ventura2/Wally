@@ -12,12 +12,12 @@ Collect → Convert → Train → Play → Deploy
 
 | Step | Package | What it does |
 |---|---|---|
-| **Collect** | `src/collector/` | Runs episodes in Minecraft via MineStudio, records observation-action-reward transitions with `frame_skip`, saves to `.tar` shards (JPEG observations + JSON sidecars). |
+| **Collect** | `src/wally/collector/` | Runs episodes in Minecraft via MineStudio, records observation-action-reward transitions with `frame_skip`, saves to `.tar` shards (JPEG observations + JSON sidecars). |
 | **Convert** | `src/wally/data/converter.py` | Reassembles per-step shards into episode sequences (`.npz` files with frames + actions arrays) for training. |
-| **Validate** | `src/validator/` | CLI + API for inspecting shard stats, validating schema/JPEG integrity, and extracting sample frames. |
+| **Validate** | `src/wally/validator/` | CLI + API for inspecting shard stats, validating schema/JPEG integrity, and extracting sample frames. |
 | **Train** | `src/wally/` | Trains a LeWorldModel (ViT encoder + causal Transformer predictor + SIGReg) on converted shards. |
-| **Play** | `src/agent/` | Runs a goal-conditioned agent loop locally via MineStudio — plan, execute, observe, repeat — with warm-start CEM replanning and trajectory recording. |
-| **Deploy** | `src/deployer/` | Runs trained agent on Minecraft — locally via MineStudio or on a live server via network protocol. |
+| **Play** | `src/wally/agent/` | Runs a goal-conditioned agent loop locally via MineStudio — plan, execute, observe, repeat — with warm-start CEM replanning and trajectory recording. |
+| **Deploy** | `src/wally/deployer/` | Runs trained agent on Minecraft — locally via MineStudio or on a live server via network protocol. |
 
 ## Concepts
 
@@ -628,18 +628,18 @@ uv run mypy
 
 ```
 src/
-  collector/     # env wrapper, recorder, buffer, config, raw_shard_writer
-  deployer/      # server connector, auth, session manager, action throttler, executor, frame renderer, safety filters, ServerEnv adapter, logging, shutdown, CLI
-  exporter/      # ShardWriter, manifest generation (legacy, used by tests)
-  validator/     # shard inspection, validation, sample extraction
-  wally/         # LeWorldModel training pipeline
+  wally/         # the wally package (importable as `wally`)
+    collector/   # env wrapper, recorder, buffer, config, raw_shard_writer
+    deployer/    # server connector, auth, session manager, action throttler, executor, frame renderer, safety filters, ServerEnv adapter, logging, shutdown, CLI
+    exporter/    # ShardWriter, manifest generation (legacy, used by tests)
+    validator/   # shard inspection, validation, sample extraction
     models/      # ViT encoder, action embedder, causal Transformer predictor, recurrent encoder
     data/        # WebDataset shard loading, preprocessing, dataloader, converter
     training/    # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation, curriculum, curiosity, ensemble
     config/      # TrainConfig, ModelConfig, YAML loader
     planner/     # CEM, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
     cli/         # wally-train, wally-convert, wally-collect, wally-train-curriculum entry points
-  agent/         # goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
+    agent/       # goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
 configs/         # example YAML configs
 tests/           # unit tests + end-to-end integration test
 tools/           # standalone scripts (loss dashboard, goal-conditioned eval, shard utilities)

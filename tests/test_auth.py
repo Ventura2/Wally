@@ -5,11 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deployer.config import DeployConfig
+from wally.deployer.config import DeployConfig
 
 
 class TestOfflineAuth:
-    @patch("deployer.auth._import_pycraft")
+    @patch("wally.deployer.auth._import_pycraft")
     def test_offline_auth_creates_connection(self, mock_import):
         mock_auth_module = MagicMock()
         mock_auth_token = MagicMock()
@@ -28,7 +28,7 @@ class TestOfflineAuth:
             mock_context_cls,
         )
 
-        from deployer.auth import authenticate_offline
+        from wally.deployer.auth import authenticate_offline
 
         result = authenticate_offline("TestPlayer", "localhost", 25565)
 
@@ -40,7 +40,7 @@ class TestOfflineAuth:
         mock_conn_instance.connect.assert_called_once()
         assert result is mock_conn_instance
 
-    @patch("deployer.auth._import_pycraft")
+    @patch("wally.deployer.auth._import_pycraft")
     def test_offline_auth_connection_failure(self, mock_import):
         mock_auth_module = MagicMock()
         mock_auth_module.Profile.from_username.return_value = MagicMock()
@@ -56,20 +56,20 @@ class TestOfflineAuth:
             mock_context_cls,
         )
 
-        from deployer.auth import authenticate_offline
+        from wally.deployer.auth import authenticate_offline
 
         with pytest.raises(ConnectionError, match="Failed to connect"):
             authenticate_offline("TestPlayer", "localhost", 25565)
 
     def test_offline_auth_raises_import_error(self):
-        from deployer.auth import authenticate_offline
+        from wally.deployer.auth import authenticate_offline
 
         msg = (
             "pyCraft is required for Minecraft authentication. "
             "Install it with: pip install pyCraft"
         )
         with patch(
-            "deployer.auth._import_pycraft",
+            "wally.deployer.auth._import_pycraft",
             side_effect=ImportError(msg),
         ):
             with pytest.raises(ImportError, match="pyCraft is required"):
@@ -77,9 +77,9 @@ class TestOfflineAuth:
 
 
 class TestOnlineAuth:
-    @patch("deployer.auth._import_pycraft")
-    @patch("deployer.auth._do_microsoft_oauth")
-    @patch("deployer.auth._load_cached_token", return_value=None)
+    @patch("wally.deployer.auth._import_pycraft")
+    @patch("wally.deployer.auth._do_microsoft_oauth")
+    @patch("wally.deployer.auth._load_cached_token", return_value=None)
     def test_missing_token_triggers_full_oauth(
         self, mock_load, mock_oauth, mock_import
     ):
@@ -101,7 +101,7 @@ class TestOnlineAuth:
             mock_context_cls,
         )
 
-        from deployer.auth import authenticate_online
+        from wally.deployer.auth import authenticate_online
 
         result = authenticate_online("localhost", 25565)
 
@@ -109,9 +109,9 @@ class TestOnlineAuth:
         mock_connection_cls.assert_called_once()
         assert result is mock_conn_instance
 
-    @patch("deployer.auth._import_pycraft")
-    @patch("deployer.auth._refresh_token")
-    @patch("deployer.auth._load_cached_token")
+    @patch("wally.deployer.auth._import_pycraft")
+    @patch("wally.deployer.auth._refresh_token")
+    @patch("wally.deployer.auth._load_cached_token")
     def test_expired_token_triggers_refresh(
         self, mock_load, mock_refresh, mock_import
     ):
@@ -139,16 +139,16 @@ class TestOnlineAuth:
             mock_context_cls,
         )
 
-        from deployer.auth import authenticate_online
+        from wally.deployer.auth import authenticate_online
 
         result = authenticate_online("localhost", 25565)
 
         mock_refresh.assert_called_once_with("old_refresh")
         assert result is mock_conn_instance
 
-    @patch("deployer.auth._import_pycraft")
-    @patch("deployer.auth._do_microsoft_oauth")
-    @patch("deployer.auth._load_cached_token")
+    @patch("wally.deployer.auth._import_pycraft")
+    @patch("wally.deployer.auth._do_microsoft_oauth")
+    @patch("wally.deployer.auth._load_cached_token")
     def test_cached_token_reused_when_valid(
         self, mock_load, mock_oauth, mock_import
     ):
@@ -170,7 +170,7 @@ class TestOnlineAuth:
             mock_context_cls,
         )
 
-        from deployer.auth import authenticate_online
+        from wally.deployer.auth import authenticate_online
 
         result = authenticate_online("localhost", 25565)
 
@@ -178,7 +178,7 @@ class TestOnlineAuth:
         assert result is mock_conn_instance
 
     def test_save_and_load_token(self, tmp_path):
-        from deployer.auth import _load_cached_token, _save_token
+        from wally.deployer.auth import _load_cached_token, _save_token
 
         token_path = tmp_path / "auth_token.json"
 
@@ -188,18 +188,18 @@ class TestOnlineAuth:
             "expires_at": "1234567890",
         }
 
-        with patch("deployer.auth._TOKEN_CACHE_PATH", token_path), \
-             patch("deployer.auth._TOKEN_CACHE_DIR", tmp_path):
+        with patch("wally.deployer.auth._TOKEN_CACHE_PATH", token_path), \
+             patch("wally.deployer.auth._TOKEN_CACHE_DIR", tmp_path):
             _save_token(token_data)
             loaded = _load_cached_token()
 
         assert loaded == token_data
 
-    @patch("deployer.auth._load_cached_token", return_value=None)
+    @patch("wally.deployer.auth._load_cached_token", return_value=None)
     def test_load_token_returns_none_when_missing(self, mock_exists):
-        from deployer.auth import _load_cached_token
+        from wally.deployer.auth import _load_cached_token
 
-        with patch("deployer.auth._TOKEN_CACHE_PATH") as mock_path:
+        with patch("wally.deployer.auth._TOKEN_CACHE_PATH") as mock_path:
             mock_path.exists.return_value = False
             result = _load_cached_token()
 
@@ -207,19 +207,19 @@ class TestOnlineAuth:
 
 
 class TestAuthSelection:
-    @patch("deployer.auth.authenticate_offline")
+    @patch("wally.deployer.auth.authenticate_offline")
     def test_offline_mode_selects_offline_auth(self, mock_offline):
         mock_offline.return_value = MagicMock()
         config = DeployConfig(auth_mode="offline", username="TestPlayer")
 
-        from deployer.auth import authenticate
+        from wally.deployer.auth import authenticate
 
         result = authenticate(config)
 
         mock_offline.assert_called_once_with("TestPlayer", "localhost", 25565)
         assert result is mock_offline.return_value
 
-    @patch("deployer.auth.authenticate_online")
+    @patch("wally.deployer.auth.authenticate_online")
     def test_online_mode_selects_online_auth(self, mock_online):
         mock_online.return_value = MagicMock()
         config = DeployConfig(
@@ -228,7 +228,7 @@ class TestAuthSelection:
             server_port=25566,
         )
 
-        from deployer.auth import authenticate
+        from wally.deployer.auth import authenticate
 
         result = authenticate(config)
 

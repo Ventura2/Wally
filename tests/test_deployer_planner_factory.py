@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agent.planner_factory import build_planner
-from agent.protocol import (
+from wally.agent.planner_factory import build_planner
+from wally.agent.protocol import (
     FlatPlannerAdapter,
     HierarchicalPlannerAdapter,
     PlannerProtocol,

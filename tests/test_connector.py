@@ -7,13 +7,13 @@ import pytest
 
 class TestConnectionState:
     def test_initial_state_is_disconnected(self):
-        from deployer.connector import ConnectionState, ServerConnector
+        from wally.deployer.connector import ConnectionState, ServerConnector
 
         connector = ServerConnector("localhost", 25565)
         assert connector.state is ConnectionState.DISCONNECTED
 
     def test_connection_property_is_none_initially(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         connector = ServerConnector("localhost", 25565)
         assert connector.connection is None
@@ -21,14 +21,14 @@ class TestConnectionState:
 
 class TestServerConnectorConnect:
     def test_successful_connect(self):
-        from deployer.connector import ConnectionState, ServerConnector
+        from wally.deployer.connector import ConnectionState, ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
         mock_conn_cls.return_value = mock_conn_instance
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.connect()
 
@@ -38,15 +38,15 @@ class TestServerConnectorConnect:
         mock_conn_instance.connect.assert_called_once()
 
     def test_connect_failure_raises_connection_error(self):
-        from deployer.connector import ConnectionState, ServerConnector
+        from wally.deployer.connector import ConnectionState, ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
         mock_conn_instance.connect.side_effect = OSError("refused")
         mock_conn_cls.return_value = mock_conn_instance
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 with pytest.raises(ConnectionError, match="Failed to connect"):
                     connector.connect()
@@ -55,7 +55,7 @@ class TestServerConnectorConnect:
         assert connector.connection is None
 
     def test_connect_fires_on_connect_callback(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
@@ -63,8 +63,8 @@ class TestServerConnectorConnect:
 
         callback = MagicMock()
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.on_connect(callback)
                 connector.connect()
@@ -72,7 +72,7 @@ class TestServerConnectorConnect:
         callback.assert_called_once()
 
     def test_connect_failure_fires_on_error_callback(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
@@ -81,8 +81,8 @@ class TestServerConnectorConnect:
 
         callback = MagicMock()
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.on_error(callback)
                 with pytest.raises(ConnectionError):
@@ -92,9 +92,9 @@ class TestServerConnectorConnect:
         assert isinstance(callback.call_args[0][0], OSError)
 
     def test_connect_raises_import_error_when_pycraft_missing(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
-        with patch("deployer.connector._HAS_PYCRAFT", False):
+        with patch("wally.deployer.connector._HAS_PYCRAFT", False):
             connector = ServerConnector("localhost", 25565)
             with pytest.raises(ImportError, match="pyCraft is not installed"):
                 connector.connect()
@@ -102,21 +102,21 @@ class TestServerConnectorConnect:
 
 class TestServerConnectorDisconnect:
     def _make_connected_connector(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
         mock_conn_cls.return_value = mock_conn_instance
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.connect()
 
         return connector, mock_conn_instance
 
     def test_disconnect_from_connected(self):
-        from deployer.connector import ConnectionState
+        from wally.deployer.connector import ConnectionState
 
         connector, mock_conn = self._make_connected_connector()
         connector.disconnect()
@@ -135,7 +135,7 @@ class TestServerConnectorDisconnect:
         assert callback.call_args[0][0] == "Client disconnected"
 
     def test_disconnect_when_already_disconnected_is_noop(self):
-        from deployer.connector import ConnectionState, ServerConnector
+        from wally.deployer.connector import ConnectionState, ServerConnector
 
         connector = ServerConnector("localhost", 25565)
         callback = MagicMock()
@@ -148,7 +148,7 @@ class TestServerConnectorDisconnect:
 
 class TestServerConnectorCallbacks:
     def test_register_multiple_callbacks(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
@@ -158,8 +158,8 @@ class TestServerConnectorCallbacks:
         cb2 = MagicMock()
         cb3 = MagicMock()
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.on_connect(cb1)
                 connector.on_connect(cb2)
@@ -171,7 +171,7 @@ class TestServerConnectorCallbacks:
         cb3.assert_called_once()
 
     def test_all_disconnect_callbacks_fire(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
@@ -180,8 +180,8 @@ class TestServerConnectorCallbacks:
         cb1 = MagicMock()
         cb2 = MagicMock()
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.on_disconnect(cb1)
                 connector.on_disconnect(cb2)
@@ -192,7 +192,7 @@ class TestServerConnectorCallbacks:
         cb2.assert_called_once()
 
     def test_callback_exception_does_not_prevent_others(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
@@ -201,8 +201,8 @@ class TestServerConnectorCallbacks:
         bad_cb = MagicMock(side_effect=RuntimeError("boom"))
         good_cb = MagicMock()
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.on_connect(bad_cb)
                 connector.on_connect(good_cb)
@@ -212,7 +212,7 @@ class TestServerConnectorCallbacks:
         good_cb.assert_called_once()
 
     def test_error_callback_exception_does_not_prevent_others(self):
-        from deployer.connector import ServerConnector
+        from wally.deployer.connector import ServerConnector
 
         mock_conn_cls = MagicMock()
         mock_conn_instance = MagicMock()
@@ -222,8 +222,8 @@ class TestServerConnectorCallbacks:
         bad_cb = MagicMock(side_effect=RuntimeError("boom"))
         good_cb = MagicMock()
 
-        with patch("deployer.connector._PyCraftConnection", mock_conn_cls):
-            with patch("deployer.connector._HAS_PYCRAFT", True):
+        with patch("wally.deployer.connector._PyCraftConnection", mock_conn_cls):
+            with patch("wally.deployer.connector._HAS_PYCRAFT", True):
                 connector = ServerConnector("localhost", 25565)
                 connector.on_error(bad_cb)
                 connector.on_error(good_cb)

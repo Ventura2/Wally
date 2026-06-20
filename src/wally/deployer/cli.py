@@ -9,10 +9,10 @@ import numpy as np
 import torch
 from PIL import Image
 
-from agent.config import AgentConfig
-from agent.loop import AgentLoop
-from agent.planner_factory import build_planner
-from deployer.config import DeployConfig
+from wally.agent.config import AgentConfig
+from wally.agent.loop import AgentLoop
+from wally.agent.planner_factory import build_planner
+from wally.deployer.config import DeployConfig
 from wally.planner.rollout import LatentRollout
 
 logger = logging.getLogger(__name__)
@@ -171,11 +171,11 @@ def main(argv: list[str] | None = None) -> None:
     planner = build_planner(args.planner, rollout, encoder)  # type: ignore[arg-type]
 
     if args.mock:
-        from deployer.env import MockServerEnv
+        from wally.deployer.env import MockServerEnv
 
         env = MockServerEnv(config)
     else:
-        from deployer.env import ServerEnv
+        from wally.deployer.env import ServerEnv
 
         env = ServerEnv(config)
 
@@ -186,7 +186,7 @@ def main(argv: list[str] | None = None) -> None:
         update={"record_trajectory": args.record}
     )
 
-    from agent.viewer import FrameViewer, FrameViewerLike, NullViewer
+    from wally.agent.viewer import FrameViewer, FrameViewerLike, NullViewer
 
     viewer: FrameViewerLike
     if args.viewer == "cv2":

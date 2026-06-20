@@ -6,11 +6,11 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from agent.buffer import TrajectoryBuffer
-from agent.config import AgentConfig
-from agent.protocol import EpisodeResult
-from agent.relay import RelayBuffer
-from agent.viewer import FrameViewerLike, NullViewer
+from wally.agent.buffer import TrajectoryBuffer
+from wally.agent.config import AgentConfig
+from wally.agent.protocol import EpisodeResult
+from wally.agent.relay import RelayBuffer
+from wally.agent.viewer import FrameViewerLike, NullViewer
 
 
 class AgentLoop:

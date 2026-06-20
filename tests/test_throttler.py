@@ -5,7 +5,7 @@ import logging
 import time
 from unittest.mock import AsyncMock
 
-from deployer.throttler import ActionThrottler
+from wally.deployer.throttler import ActionThrottler
 
 
 class TestActionThrottlerTiming:
@@ -49,7 +49,7 @@ class TestActionThrottlerBackpressure:
                 handler=handler, interval=10.0, max_queue_depth=2
             )
             throttler._queue = asyncio.Queue()
-            logger = logging.getLogger("deployer.throttler")
+            logger = logging.getLogger("wally.deployer.throttler")
             records: list[logging.LogRecord] = []
             handler_log = logging.Handler()
             handler_log.emit = lambda record: records.append(record)

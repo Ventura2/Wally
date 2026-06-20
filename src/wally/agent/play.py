@@ -9,17 +9,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-# Ensure `src/` is on sys.path so `agent`, `wally`, `collector` are importable
-# when the package is invoked without `pip install -e .` (e.g. inside the
-# wally-dev Podman container where Python 3.10 + minestudio is used).
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_SRC = _PROJECT_ROOT / "src"
-for _p in (str(_PROJECT_ROOT), str(_SRC)):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from agent.config import AgentConfig
-from agent.planner_factory import build_planner
+from wally.agent.config import AgentConfig
+from wally.agent.planner_factory import build_planner
 from wally.planner.rollout import LatentRollout
 
 logger = logging.getLogger(__name__)
@@ -191,15 +182,15 @@ def main(argv: list[str] | None = None) -> None:
     planner = build_planner(args.planner, rollout, encoder)
 
     try:
-        from agent.env import MineStudioAgentEnv
+        from wally.agent.env import MineStudioAgentEnv
     except ImportError as exc:
         logger.error("MineStudio is not installed: %s", exc)
         sys.exit(1)
 
     env = MineStudioAgentEnv(config)
 
-    from agent.loop import AgentLoop
-    from agent.viewer import FrameViewer, NullViewer
+    from wally.agent.loop import AgentLoop
+    from wally.agent.viewer import FrameViewer, NullViewer
 
     if args.relay:
         viewer = NullViewer()
@@ -219,7 +210,7 @@ def main(argv: list[str] | None = None) -> None:
     relay_buffer = None
     relay_server = None
     if args.relay:
-        from agent.relay import RelayBuffer, RelayHTTPServer
+        from wally.agent.relay import RelayBuffer, RelayHTTPServer
 
         relay_buffer = RelayBuffer(
             max_width=config.relay_max_width,

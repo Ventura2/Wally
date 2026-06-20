@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from src.collector.config import CollectorConfig
-from src.collector.recorder import TransitionRecorder
+from wally.collector.config import CollectorConfig
+from wally.collector.recorder import TransitionRecorder
 
 
 def _make_recorder(frame_skip=4):

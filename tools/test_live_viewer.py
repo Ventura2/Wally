@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 def _run_synthetic(viewer_kind: str, steps: int, fps: float) -> None:
-    from agent.viewer import FrameViewer, NullViewer
+    from wally.agent.viewer import FrameViewer, NullViewer
 
     if viewer_kind == "cv2":
         viewer = FrameViewer(window_name="wally-viewer-smoketest")

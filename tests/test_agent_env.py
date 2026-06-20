@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 import torch
 
-from src.agent.config import AgentConfig
+from wally.agent.config import AgentConfig
 
 
 @pytest.fixture
 def mock_env():
-    with patch("src.collector.env._MinecraftSim") as mock:
+    with patch("wally.collector.env._MinecraftSim") as mock:
         sim = mock.return_value
         sim.reset.return_value = (
             {"image": np.zeros((224, 224, 3), dtype=np.uint8)},
@@ -22,7 +22,7 @@ def mock_env():
             False,
             {},
         )
-        from src.agent.env import MineStudioAgentEnv
+        from wally.agent.env import MineStudioAgentEnv
 
         config = AgentConfig(resize=(64, 64))
         env = MineStudioAgentEnv(config)

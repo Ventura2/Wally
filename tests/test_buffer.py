@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from src.collector.buffer import TrajectoryBuffer
+from wally.collector.buffer import TrajectoryBuffer
 
 
 class TestBufferAdd:

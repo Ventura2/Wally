@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from agent.viewer import FrameViewer, NullViewer
+from wally.agent.viewer import FrameViewer, NullViewer
 
 
 class TestNullViewer:

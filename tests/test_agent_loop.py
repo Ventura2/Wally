@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from agent.config import AgentConfig
-from agent.loop import AgentLoop
-from agent.protocol import PlanResult
+from wally.agent.config import AgentConfig
+from wally.agent.loop import AgentLoop
+from wally.agent.protocol import PlanResult
 
 
 def _make_env(
@@ -257,6 +257,6 @@ class TestAgentLoopViewer:
         config = AgentConfig(episode_timeout=5, replan_interval=4)
         loop = AgentLoop(env, planner, config)
         assert loop._viewer is not None
-        from agent.viewer import NullViewer
+        from wally.agent.viewer import NullViewer
 
         assert isinstance(loop._viewer, NullViewer)

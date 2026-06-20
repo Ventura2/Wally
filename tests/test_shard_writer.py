@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from src.exporter.shard_writer import ShardWriter
+from wally.exporter.shard_writer import ShardWriter
 
 
 def _make_transitions(

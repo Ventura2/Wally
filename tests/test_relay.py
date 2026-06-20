@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 
-from agent.relay import BOUNDARY, RelayBuffer, RelayHTTPServer
+from wally.agent.relay import BOUNDARY, RelayBuffer, RelayHTTPServer
 
 
 def _free_port() -> int:

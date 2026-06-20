@@ -5,7 +5,7 @@ import json
 import logging
 from types import SimpleNamespace
 
-from deployer.logging import (
+from wally.deployer.logging import (
     ActionLogger,
     JSONFormatter,
     PositionTracker,

@@ -37,7 +37,7 @@ except ImportError:
     _HAS_PYCRAFT = False
 
 if TYPE_CHECKING:
-    from deployer.session import SessionManager
+    from wally.deployer.session import SessionManager
 
 logger = logging.getLogger(__name__)
 

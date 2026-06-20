@@ -10,7 +10,7 @@ from unittest.mock import patch
 import torch
 from PIL import Image
 
-from deployer.cli import main
+from wally.deployer.cli import main
 from wally.models.lewm import LeWorldModel
 
 
@@ -90,8 +90,8 @@ def test_cli_gradient_planner_constructs(tmp_path: Path) -> None:
     LatentRollout it can build but the per-step backward pass cannot run on
     a frozen model. We assert that ``build_planner('gradient', ...)`` returns
     a FlatPlannerAdapter (the CLI builds the planner successfully)."""
-    from agent.planner_factory import build_planner
-    from agent.protocol import FlatPlannerAdapter
+    from wally.agent.planner_factory import build_planner
+    from wally.agent.protocol import FlatPlannerAdapter
     from wally.planner.rollout import LatentRollout
 
     ckpt = tmp_path / "model.pt"
@@ -104,8 +104,8 @@ def test_cli_gradient_planner_constructs(tmp_path: Path) -> None:
 
 
 def test_cli_hierarchical_planner_constructs(tmp_path: Path) -> None:
-    from agent.planner_factory import build_planner
-    from agent.protocol import HierarchicalPlannerAdapter
+    from wally.agent.planner_factory import build_planner
+    from wally.agent.protocol import HierarchicalPlannerAdapter
     from wally.planner.rollout import LatentRollout
 
     ckpt = tmp_path / "model.pt"

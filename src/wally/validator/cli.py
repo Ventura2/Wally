@@ -4,13 +4,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from validator.inspector import (
+from wally.validator.inspector import (
     compute_action_distribution,
     inspect_dataset_dir,
     inspect_shard,
     validate_shard,
 )
-from validator.samples import extract_samples
+from wally.validator.samples import extract_samples
 
 MIN_TRANSITION_COUNT = 100_000
 

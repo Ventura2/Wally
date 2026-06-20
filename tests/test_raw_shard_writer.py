@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from src.collector.raw_shard_writer import RawShardWriter
+from wally.collector.raw_shard_writer import RawShardWriter
 
 
 def _make_transition(episode_id: str, step_index: int, seed: int = 42) -> dict:

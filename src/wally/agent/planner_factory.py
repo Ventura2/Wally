@@ -20,7 +20,7 @@ from wally.planner.plan import GoalConditionedPlanner
 from wally.planner.rollout import LatentRollout
 
 if TYPE_CHECKING:
-    from agent.protocol import PlannerProtocol
+    from wally.agent.protocol import PlannerProtocol
 
 
 def build_planner(
@@ -47,7 +47,7 @@ def build_planner(
     hier_config = HierarchicalPlannerConfig.default()
 
     if planner_kind == "cem":
-        from agent.protocol import FlatPlannerAdapter
+        from wally.agent.protocol import FlatPlannerAdapter
 
         cem_config = cem_config.model_copy(
             update={"inventory_stall_penalty": 0.25}
@@ -56,13 +56,13 @@ def build_planner(
         return FlatPlannerAdapter(planner)
 
     if planner_kind == "gradient":
-        from agent.protocol import FlatPlannerAdapter
+        from wally.agent.protocol import FlatPlannerAdapter
 
         planner = GradientMPC(rollout, encoder, gradient_mpc_config)
         return FlatPlannerAdapter(planner)
 
     if planner_kind == "hierarchical":
-        from agent.protocol import HierarchicalPlannerAdapter
+        from wally.agent.protocol import HierarchicalPlannerAdapter
 
         high_level = HighLevelPlanner(rollout._model, encoder, high_level_config)
         cem_config = cem_config.model_copy(

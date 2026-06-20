@@ -4,11 +4,11 @@ import logging
 import signal
 from typing import Any, Dict, List
 
-from src.collector.buffer import TrajectoryBuffer
-from src.collector.config import CollectorConfig
-from src.collector.env import MineStudioEnv
-from src.collector.raw_shard_writer import RawShardWriter
-from src.collector.recorder import TransitionRecorder
+from wally.collector.buffer import TrajectoryBuffer
+from wally.collector.config import CollectorConfig
+from wally.collector.env import MineStudioEnv
+from wally.collector.raw_shard_writer import RawShardWriter
+from wally.collector.recorder import TransitionRecorder
 
 logger = logging.getLogger(__name__)
 

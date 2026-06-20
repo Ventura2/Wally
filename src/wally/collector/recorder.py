@@ -5,7 +5,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 import numpy as np
-from src.collector.config import CollectorConfig
+from wally.collector.config import CollectorConfig
 
 
 class TransitionRecorder:

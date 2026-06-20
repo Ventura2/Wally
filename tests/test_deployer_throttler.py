@@ -6,7 +6,7 @@ import asyncio
 import time
 from unittest.mock import AsyncMock
 
-from deployer.throttler import ActionThrottler
+from wally.deployer.throttler import ActionThrottler
 
 
 class TestSubmitSync:
