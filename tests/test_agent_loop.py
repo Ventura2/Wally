@@ -138,7 +138,12 @@ class TestAgentLoopKeyboardInterrupt:
 
 class TestAgentLoopRecordingEnabled:
     def test_recording_enabled(self) -> None:
-        env = _make_env(num_steps=20)
+        env = _make_env(
+            step_side_effect=[
+                (torch.rand(3, 64, 64), 0.0, False, {"inventory": {"oak_log": 1}})
+                for _ in range(20)
+            ]
+        )
         planner = _make_planner()
         config = AgentConfig(
             episode_timeout=10, replan_interval=4, record_trajectory=True
@@ -150,6 +155,36 @@ class TestAgentLoopRecordingEnabled:
         assert result.trajectory is not None
         assert result.trajectory["frames"].shape == (10, 64, 64, 3)
         assert result.trajectory["actions"].shape == (10, 25)
+        assert result.trajectory["events"].shape == (10,)
+        assert result.trajectory["events"][0]["inventory"] == {"oak_log": 1}
+
+
+class TestAgentLoopActionPassthrough:
+    def test_loop_does_not_mutate_inventory_action(self) -> None:
+        observed_actions: list[torch.Tensor] = []
+
+        env = MagicMock()
+        env.reset.return_value = torch.rand(3, 64, 64)
+
+        def step_fn(action):
+            observed_actions.append(action.clone())
+            return torch.rand(3, 64, 64), 0.0, True, {}
+
+        env.step.side_effect = step_fn
+
+        planner = MagicMock()
+        planned = torch.zeros(1, 25)
+        planned[0, 12] = 1.0
+        planner.plan.return_value = PlanResult(actions=planned, cost=0.0)
+
+        config = AgentConfig(episode_timeout=1, replan_interval=1)
+        loop = AgentLoop(env, planner, config)
+
+        result = loop.run_episode(goal_frame=torch.rand(3, 64, 64))
+
+        assert result.steps == 1
+        assert observed_actions
+        assert observed_actions[0][12].item() == 1.0
 
 
 class TestAgentLoopRecordingDisabled:

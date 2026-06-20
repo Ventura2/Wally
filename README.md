@@ -329,6 +329,44 @@ The agent loop:
 - Records trajectories for analysis or retraining
 - Supports both flat and hierarchical planners (`--planner hierarchical`)
 
+#### Watching the agent live
+
+The agent's POV frame is exposed on every step and can be watched in real time. There are two paths — see `docs/live-viewer.md` for the full details, WSL2 planner-performance caveats, and end-to-end commands:
+
+| Path | Renderer | Where the window lives |
+|---|---|---|
+| `wally-deploy --viewer cv2` | Voxel-grid (stylized, real chunk topology from a vanilla 1.18.1 server) | Native OpenCV window on Windows |
+| `wally-play --relay` (in the `wally-dev` container) | Photoreal MineStudio | MJPEG stream at `http://localhost:8081/stream` — open in any browser |
+
+Verified working sequence (Windows host + Podman container, photoreal MineStudio path):
+
+```powershell
+# Container must expose port 8081
+podman run -d --name wally-dev --network pasta `
+  -v /mnt/d/Projects/Personal/artificial-intelligence/wally:/workspace:rbind `
+  -p 8081:8081 `
+  localhost/wally-dev:latest sleep infinity
+
+# Start the agent detached (system Python 3.10 + system MineStudio inside the container)
+podman exec wally-dev bash -c @'
+  cat > /tmp/start-play.sh << "EOF"
+  #!/bin/bash
+  export PYTHONPATH=/workspace/src
+  export MINESTUDIO_DIR=/tmp/MineStudio
+  exec python3 -m agent.play \
+    --relay --relay-host 0.0.0.0 --relay-port 8081 \
+    --checkpoint /workspace/checkpoints/checkpoint_100000.pt \
+    --goal-frame /workspace/checkpoints/goal_frame1.png \
+    --planner cem --viewer none
+  EOF
+  chmod +x /tmp/start-play.sh
+  setsid nohup /tmp/start-play.sh > /tmp/wally-play.log 2>&1 < /dev/null &
+  disown
+'@
+
+# Wait ~15s, then open in any browser: http://localhost:8081/stream
+```
+
 ### Step 6: Deploy
 
 Once trained, deploy the agent to play Minecraft autonomously on a live server.

@@ -82,7 +82,83 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="viewer",
         help="Disable the live POV viewer (alias for --viewer none).",
     )
+    parser.add_argument(
+        "--relay",
+        action="store_true",
+        default=False,
+        help=(
+            "Expose the latest POV frame over an MJPEG HTTP relay at "
+            "http://<relay-host>:<relay-port>/stream. Useful for WSL2 -> "
+            "Windows viewing of the MineStudio render."
+        ),
+    )
+    parser.add_argument(
+        "--relay-port",
+        type=int,
+        default=8081,
+        help="TCP port for the MJPEG relay (default: 8081).",
+    )
+    parser.add_argument(
+        "--relay-host",
+        type=str,
+        default="0.0.0.0",
+        help="Bind host for the MJPEG relay (default: 0.0.0.0).",
+    )
+    parser.add_argument(
+        "--relay-max-size",
+        type=str,
+        default="640x360",
+        help='Letterboxed max frame size as "WxH" (default: "640x360").',
+    )
+    parser.add_argument(
+        "--relay-jpeg-quality",
+        type=int,
+        default=80,
+        help="JPEG quality 1-100 for the relayed frame (default: 80).",
+    )
+    parser.add_argument(
+        "--relay-min-frame-interval-ms",
+        type=int,
+        default=33,
+        help="Minimum ms between relayed frames; controls viewer fps (default: 33).",
+    )
     return parser.parse_args(argv)
+
+
+def _parse_max_size(value: str) -> tuple[int, int]:
+    parts = value.lower().replace(",", "x").split("x")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError(
+            f'--relay-max-size must be "WxH" (got {value!r})'
+        )
+    try:
+        w, h = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f'--relay-max-size must be "WxH" with integers (got {value!r})'
+        ) from exc
+    if w < 1 or h < 1:
+        raise argparse.ArgumentTypeError(
+            f"--relay-max-size values must be >= 1 (got {value!r})"
+        )
+    return w, h
+
+
+def _apply_relay_args(
+    config: AgentConfig, args: argparse.Namespace
+) -> AgentConfig:
+    max_w, max_h = _parse_max_size(args.relay_max_size)
+    return config.model_copy(
+        update={
+            "relay_enabled": args.relay,
+            "relay_port": args.relay_port,
+            "relay_host": args.relay_host,
+            "relay_max_width": max_w,
+            "relay_max_height": max_h,
+            "relay_jpeg_quality": args.relay_jpeg_quality,
+            "relay_min_frame_interval_ms": args.relay_min_frame_interval_ms,
+        }
+    )
 
 
 def _load_image_as_tensor(path: Path) -> torch.Tensor:
@@ -106,6 +182,7 @@ def main(argv: list[str] | None = None) -> None:
 
     config = AgentConfig.from_yaml(args.config) if args.config else AgentConfig()
     config = config.model_copy(update={"record_trajectory": args.record})
+    config = _apply_relay_args(config, args)
 
     goal_frame = _load_image_as_tensor(args.goal_frame)
 
@@ -124,18 +201,54 @@ def main(argv: list[str] | None = None) -> None:
     from agent.loop import AgentLoop
     from agent.viewer import FrameViewer, NullViewer
 
-    if args.viewer == "cv2":
+    if args.relay:
+        viewer = NullViewer()
+        logger.info(
+            "Live POV viewer disabled (relay enabled) "
+            "— see http://%s:%d/stream",
+            args.relay_host,
+            args.relay_port,
+        )
+    elif args.viewer == "cv2":
         viewer = FrameViewer()
         logger.info("Live POV viewer enabled (cv2). Press 'q' or 'Esc' to quit.")
     else:
         viewer = NullViewer()
         logger.info("Live POV viewer disabled (--viewer none).")
 
-    loop = AgentLoop(env, planner, config, viewer=viewer)
+    relay_buffer = None
+    relay_server = None
+    if args.relay:
+        from agent.relay import RelayBuffer, RelayHTTPServer
+
+        relay_buffer = RelayBuffer(
+            max_width=config.relay_max_width,
+            max_height=config.relay_max_height,
+            jpeg_quality=config.relay_jpeg_quality,
+        )
+        relay_server = RelayHTTPServer(
+            host=args.relay_host,
+            port=args.relay_port,
+            buffer=relay_buffer,
+            min_frame_interval_ms=config.relay_min_frame_interval_ms,
+        )
+        relay_server.start()
+
+    loop = AgentLoop(env, planner, config, viewer=viewer, relay=relay_buffer)
     try:
         result = loop.run_episode(goal_frame)
     finally:
         viewer.close()
+        if relay_buffer is not None:
+            try:
+                relay_buffer.update(None)
+            except Exception:  # noqa: BLE001
+                logger.debug("relay.update(None) failed", exc_info=True)
+        if relay_server is not None:
+            try:
+                relay_server.stop()
+            except Exception:  # noqa: BLE001
+                logger.debug("relay_server.stop() failed", exc_info=True)
 
     print(
         f"Episode complete: {result.steps} steps, "

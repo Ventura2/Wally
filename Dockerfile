@@ -38,6 +38,14 @@ RUN pip install --upgrade pip && \
     pip install MineStudio && \
     python -m minestudio.simulator.entry -y
 
+# Replace the ROCm torch from the base image with a CPU-only build.
+# librocdxg in WSL2 is broken for RDNA2 (gfx1031), so the AMD torch in this
+# image is unusable for compute. CPU torch keeps the gradient / hierarchical
+# planners functional (10-50x slower than TheRock GPU on Windows, but
+# sufficient for a qualitative "watch the agent plan" loop).
+RUN pip install --index-url https://download.pytorch.org/whl/cpu \
+        --force-reinstall --no-deps torch
+
 WORKDIR /workspace
 
 # Drop into bash

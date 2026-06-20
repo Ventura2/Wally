@@ -67,7 +67,7 @@ class GoalConditionedPlanner:
             z_g_exp = z_g.expand(pop, -1)
             trajectory = self._world_model.rollout(z_0_exp, actions)
             z_H = trajectory[:, -1, :]
-            return self._cost_fn(z_H, z_g_exp)
+            return self._regularized_cost(actions, z_H, z_g_exp)
 
         actions, cost_history = self._cem.optimize(
             cost_fn,
@@ -113,7 +113,7 @@ class GoalConditionedPlanner:
             z_g_exp = z_g.expand(pop, -1)
             trajectory = self._world_model.rollout(z_0_exp, actions)
             z_H = trajectory[:, -1, :]
-            return self._cost_fn(z_H, z_g_exp)
+            return self._regularized_cost(actions, z_H, z_g_exp)
 
         actions, cost_history = self._cem.optimize(
             cost_fn,
@@ -146,3 +146,21 @@ class GoalConditionedPlanner:
             goal_frame = goal_frame.unsqueeze(0)
         squeeze = current_frame.shape[0] == 1
         return current_frame, goal_frame, squeeze
+
+    def _regularized_cost(
+        self,
+        actions: torch.Tensor,
+        z_H: torch.Tensor,
+        z_g: torch.Tensor,
+    ) -> torch.Tensor:
+        base_cost = self._cost_fn(z_H, z_g)
+        penalty = self._inventory_stall_penalty(actions)
+        return base_cost + penalty
+
+    def _inventory_stall_penalty(self, actions: torch.Tensor) -> torch.Tensor:
+        if self._config.inventory_stall_penalty <= 0.0 or actions.shape[-1] <= 12:
+            return torch.zeros(actions.shape[0], device=actions.device)
+        inventory_usage = actions[..., 12]
+        return self._config.inventory_stall_penalty * inventory_usage.pow(2).sum(
+            dim=-1
+        )

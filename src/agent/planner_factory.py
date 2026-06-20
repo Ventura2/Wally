@@ -49,6 +49,9 @@ def build_planner(
     if planner_kind == "cem":
         from agent.protocol import FlatPlannerAdapter
 
+        cem_config = cem_config.model_copy(
+            update={"inventory_stall_penalty": 0.25}
+        )
         planner = GoalConditionedPlanner(rollout, encoder, cem_config)
         return FlatPlannerAdapter(planner)
 
@@ -62,6 +65,9 @@ def build_planner(
         from agent.protocol import HierarchicalPlannerAdapter
 
         high_level = HighLevelPlanner(rollout._model, encoder, high_level_config)
+        cem_config = cem_config.model_copy(
+            update={"inventory_stall_penalty": 0.25}
+        )
         low_level = GoalConditionedPlanner(rollout, encoder, cem_config)
         planner = HierarchicalPlanner(high_level, low_level, hier_config)
         return HierarchicalPlannerAdapter(planner)

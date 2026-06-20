@@ -55,6 +55,7 @@ Thumbs.db
 *.7z
 *.rar
 *.gz
+*.npz
 
 # WSL/ROCm build artifacts
 librocdxg/

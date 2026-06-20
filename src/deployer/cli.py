@@ -87,6 +87,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Torch device for the world model (e.g. cuda, cuda:0, cpu). "
         "Default: cuda if available, else cpu.",
     )
+    parser.add_argument(
+        "--viewer",
+        choices=["cv2", "none"],
+        default="cv2",
+        help="Live POV viewer: 'cv2' shows an OpenCV window, 'none' is headless.",
+    )
+    parser.add_argument(
+        "--no-viewer",
+        action="store_const",
+        const="none",
+        dest="viewer",
+        help="Disable the live POV viewer (alias for --viewer none).",
+    )
     return parser.parse_args(argv)
 
 
@@ -173,16 +186,28 @@ def main(argv: list[str] | None = None) -> None:
         update={"record_trajectory": args.record}
     )
 
-    loop = AgentLoop(env, planner, agent_config)
+    from agent.viewer import FrameViewer, FrameViewerLike, NullViewer
+
+    viewer: FrameViewerLike
+    if args.viewer == "cv2":
+        viewer = FrameViewer(window_name="wally-deploy")
+        logger.info("Live POV viewer enabled (cv2). Press 'q' or 'Esc' to quit.")
+    else:
+        viewer = NullViewer()
+        logger.info("Live POV viewer disabled (--viewer none).")
+
+    loop = AgentLoop(env, planner, agent_config, viewer=viewer)
     try:
         result = loop.run_episode(goal_frame)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
         env.close()
+        viewer.close()
         return
     except Exception:
         logger.exception("Agent loop failed")
         env.close()
+        viewer.close()
         raise
 
     print(

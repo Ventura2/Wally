@@ -29,6 +29,12 @@ class TestBuildPlanner:
         assert isinstance(planner, FlatPlannerAdapter)
         assert isinstance(planner, PlannerProtocol)
 
+    def test_cem_uses_inventory_stall_penalty(self) -> None:
+        rollout = _make_rollout()
+        encoder = MagicMock()
+        planner = build_planner("cem", rollout, encoder)
+        assert planner._planner._config.inventory_stall_penalty > 0
+
     def test_gradient_returns_flat_adapter(self) -> None:
         rollout = _make_rollout()
         encoder = MagicMock()
@@ -42,6 +48,7 @@ class TestBuildPlanner:
         planner = build_planner("hierarchical", rollout, encoder)
         assert isinstance(planner, HierarchicalPlannerAdapter)
         assert isinstance(planner, PlannerProtocol)
+        assert planner._planner._low_level._config.inventory_stall_penalty > 0
 
     def test_unknown_kind_raises_value_error(self) -> None:
         rollout = _make_rollout()

@@ -42,6 +42,27 @@ class TestTrajectoryBufferAddAndToDict:
         assert result["actions"].shape == (1, 25)
         np.testing.assert_allclose(result["actions"][0], action_tensor.numpy(), atol=1e-6)
 
+    def test_event_metadata_is_recorded(self) -> None:
+        buf = TrajectoryBuffer()
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        action = np.zeros(25, dtype=np.float32)
+        info = {
+            "inventory": {"oak_log": 2, "stick": 4},
+            "block_break_count": np.int64(3),
+            "pov": np.zeros((8, 8, 3), dtype=np.uint8),
+            "unrelated": "ignore-me",
+        }
+        buf.add(frame, action, info=info)
+
+        result = buf.to_dict()
+        assert "events" in result
+        assert result["events"].shape == (1,)
+        event = result["events"][0]
+        assert event["inventory"] == {"oak_log": 2, "stick": 4}
+        assert event["block_break_count"] == 3
+        assert "pov" not in event
+        assert "unrelated" not in event
+
 
 class TestTrajectoryBufferLen:
     def test_len_empty(self) -> None:

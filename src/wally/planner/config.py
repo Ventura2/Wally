@@ -15,6 +15,7 @@ class CEMConfig(BaseModel):
     action_low: float = -1.0
     action_high: float = 1.0
     gradient_policy: Literal["detach", "straight_through"] = "detach"
+    inventory_stall_penalty: float = 5e-2
 
     @field_validator("elite_frac")
     @classmethod
@@ -44,6 +45,13 @@ class CEMConfig(BaseModel):
             raise ValueError("horizon must be at least 1")
         return v
 
+    @field_validator("inventory_stall_penalty")
+    @classmethod
+    def _check_inventory_stall_penalty(cls, v: float) -> float:
+        if v < 0.0:
+            raise ValueError("inventory_stall_penalty must be >= 0")
+        return v
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> CEMConfig:
         with open(path) as f:
@@ -60,4 +68,5 @@ class CEMConfig(BaseModel):
             action_low=-1.0,
             action_high=1.0,
             gradient_policy="detach",
+            inventory_stall_penalty=5e-2,
         )

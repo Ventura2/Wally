@@ -57,6 +57,31 @@ class TestParseArgs:
         args = parse_args(["--mock"])
         assert args.mock is True
 
+    @pytest.mark.smoke
+    def test_viewer_default(self):
+        args = parse_args([])
+        assert args.viewer == "cv2"
+
+    @pytest.mark.smoke
+    def test_viewer_explicit_none(self):
+        args = parse_args(["--viewer", "none"])
+        assert args.viewer == "none"
+
+    @pytest.mark.smoke
+    def test_viewer_explicit_cv2(self):
+        args = parse_args(["--viewer", "cv2"])
+        assert args.viewer == "cv2"
+
+    @pytest.mark.smoke
+    def test_no_viewer_alias(self):
+        args = parse_args(["--no-viewer"])
+        assert args.viewer == "none"
+
+    @pytest.mark.smoke
+    def test_invalid_viewer_choice(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--viewer", "bogus"])
+
     @pytest.mark.parametrize("planner", ["cem", "gradient", "hierarchical"])
     def test_planner_choices(self, planner: str) -> None:
         args = parse_args(["--planner", planner])
@@ -150,6 +175,57 @@ class TestMainConfig:
 
         mock_env_cls.assert_called_once()
         mock_env.close.assert_called_once()
+
+    @patch("deployer.cli.AgentLoop")
+    @patch("deployer.cli.LatentRollout")
+    @patch("deployer.cli.build_planner")
+    @patch("deployer.env.MockServerEnv")
+    @pytest.mark.smoke
+    def test_main_default_viewer_is_null_when_no_viewer(
+        self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
+    ):
+        ckpt, goal = _make_paths(tmp_path)
+        mock_env_cls.return_value = MagicMock()
+        mock_loop_cls.return_value = MagicMock(
+            run_episode=MagicMock(return_value=MagicMock(steps=0, final_cost=0.0, duration_seconds=0.0))
+        )
+        from agent.viewer import NullViewer
+
+        main([
+            "--mock",
+            "--no-viewer",
+            "--checkpoint", str(ckpt),
+            "--goal-frame", str(goal),
+        ])
+
+        viewer_kwarg = mock_loop_cls.call_args.kwargs.get("viewer")
+        assert isinstance(viewer_kwarg, NullViewer)
+
+    @patch("deployer.cli.AgentLoop")
+    @patch("deployer.cli.LatentRollout")
+    @patch("deployer.cli.build_planner")
+    @patch("deployer.env.MockServerEnv")
+    @pytest.mark.smoke
+    def test_main_explicit_cv2_constructs_frame_viewer(
+        self, mock_env_cls, _planner, _rollout, mock_loop_cls, tmp_path
+    ):
+        ckpt, goal = _make_paths(tmp_path)
+        mock_env_cls.return_value = MagicMock()
+        mock_loop_cls.return_value = MagicMock(
+            run_episode=MagicMock(return_value=MagicMock(steps=0, final_cost=0.0, duration_seconds=0.0))
+        )
+        from agent.viewer import FrameViewer
+
+        main([
+            "--mock",
+            "--viewer", "cv2",
+            "--checkpoint", str(ckpt),
+            "--goal-frame", str(goal),
+        ])
+
+        viewer_kwarg = mock_loop_cls.call_args.kwargs.get("viewer")
+        assert isinstance(viewer_kwarg, FrameViewer)
+        assert viewer_kwarg._window_name == "wally-deploy"
 
     @patch("deployer.cli.AgentLoop")
     @patch("deployer.cli.LatentRollout")

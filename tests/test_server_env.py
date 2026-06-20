@@ -130,6 +130,41 @@ class TestServerEnvStep:
         assert "packets" in info
         assert "step" in info
 
+    @pytest.mark.smoke
+    def test_step_info_includes_pov(self):
+        env, _, _, _, mock_renderer, _ = _make_env()
+        env.reset()
+        action = torch.zeros(25)
+        _obs, _r, _d, info = env.step(action)
+        assert "pov" in info
+        pov = info["pov"]
+        assert isinstance(pov, np.ndarray)
+        assert pov.dtype == np.uint8
+        assert pov.shape == (224, 224, 3)
+        mock_renderer.render.assert_called()
+
+    @pytest.mark.smoke
+    def test_safety_violation_info_includes_pov(self):
+        env, _, _, _, mock_renderer, _ = _make_env()
+        with patch("deployer.env.SafetyFilter") as mock_safety_cls:
+            mock_safety = MagicMock()
+            mock_safety.check.return_value = False
+            mock_safety_cls.return_value = mock_safety
+            with (
+                patch("deployer.env.ServerConnector", return_value=MagicMock()),
+                patch("deployer.env.SessionManager", return_value=MagicMock()),
+                patch("deployer.env.ActionExecutor", return_value=MagicMock()),
+                patch("deployer.env.FrameRenderer", return_value=mock_renderer),
+                patch("deployer.env.ActionThrottler", return_value=MagicMock()),
+            ):
+                from deployer.env import ServerEnv
+                env2 = ServerEnv(DeployConfig.default())
+            env2.reset()
+            _obs, _r, _d, info = env2.step(torch.zeros(25))
+            assert info.get("safety_violation") is True
+            assert "pov" in info
+            assert info["pov"].shape == (224, 224, 3)
+
     def test_step_raises_when_closed(self):
         env, _, _, _, _, _ = _make_env()
         env.close()

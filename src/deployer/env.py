@@ -122,7 +122,7 @@ class ServerEnv:
                 cast(Tensor, self._renderer.preprocess(frame)),
                 0.0,
                 False,
-                {"safety_violation": True},
+                {"safety_violation": True, "pov": frame, "step": self._step_count},
             )
 
         packets = self._executor.execute(action_np)
@@ -135,7 +135,11 @@ class ServerEnv:
         obs = cast(Tensor, self._renderer.preprocess(frame))
         reward = 0.0
         done = False
-        info: dict[str, Any] = {"packets": packets, "step": self._step_count}
+        info: dict[str, Any] = {
+            "packets": packets,
+            "step": self._step_count,
+            "pov": frame,
+        }
         return obs, reward, done, info
 
     def close(self) -> None:
@@ -181,6 +185,10 @@ class MockServerEnv:
             render_distance=config.render_distance,
         )
         self._rng = np.random.default_rng(seed=0)
+        self._last_pov: np.ndarray = np.zeros(  # type: ignore[type-arg]
+            (self._RENDER_RESOLUTION[0], self._RENDER_RESOLUTION[1], 3),
+            dtype=np.uint8,
+        )
 
     def reset(self) -> Tensor:
         if self._closed:
@@ -210,7 +218,11 @@ class MockServerEnv:
         obs = self._synthetic_frame()
         reward = 0.0
         done = False
-        info: dict[str, Any] = {"packets": packets, "step": self._step_count}
+        info: dict[str, Any] = {
+            "packets": packets,
+            "step": self._step_count,
+            "pov": self._last_pov,
+        }
         return obs, reward, done, info
 
     def close(self) -> None:
@@ -218,10 +230,12 @@ class MockServerEnv:
 
     def _synthetic_frame(self) -> Tensor:
         arr = self._rng.random(
-            (3, self._RENDER_RESOLUTION[0], self._RENDER_RESOLUTION[1]),
+            (self._RENDER_RESOLUTION[0], self._RENDER_RESOLUTION[1], 3),
             dtype=np.float32,
         )
-        return torch.from_numpy(arr)
+        self._last_pov = (arr * 255.0).astype(np.uint8)
+        chw = arr.transpose(2, 0, 1)
+        return torch.from_numpy(chw)
 
     def _apply_movement(self, packets: list[dict[str, Any]]) -> None:
         x, y, z = self._position

@@ -102,6 +102,17 @@ class TestMockServerEnvStep:
         _obs, _r, _d, info = env.step(torch.zeros(25))
         assert info["packets"] == []
 
+    @pytest.mark.smoke
+    def test_step_info_includes_pov(self) -> None:
+        env = _make_env()
+        env.reset()
+        _obs, _r, _d, info = env.step(torch.zeros(25))
+        assert "pov" in info
+        pov = info["pov"]
+        assert isinstance(pov, np.ndarray)
+        assert pov.dtype == np.uint8
+        assert pov.shape == (224, 224, 3)
+
 
 class TestMockServerEnvPositionTracking:
     def test_movement_packet_updates_position(self) -> None:

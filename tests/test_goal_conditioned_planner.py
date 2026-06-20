@@ -30,7 +30,24 @@ def _make_encoder(latent_dim: int = 8) -> MagicMock:
     return MagicMock(side_effect=encoder)
 
 
+def _make_constant_rollout(latent_dim: int = 8) -> MagicMock:
+    mock = MagicMock()
+
+    def rollout(z_0: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+        B, H, _ = actions.shape
+        trajectory = torch.zeros(B, H + 1, latent_dim, device=actions.device)
+        trajectory[:, 0, :] = z_0
+        return trajectory
+
+    mock.rollout = MagicMock(side_effect=rollout)
+    return mock
+
+
 class TestGoalConditionedPlanner:
+    def test_default_inventory_stall_penalty_is_nonzero(self):
+        cfg = CEMConfig.default()
+        assert cfg.inventory_stall_penalty > 0
+
     def test_bounded_actions(self):
         cfg = CEMConfig(
             population_size=32, n_iterations=3, horizon=4,
@@ -132,6 +149,54 @@ class TestGoalConditionedPlanner:
         planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
 
         frame = torch.randn(2, 3, 64, 64)
+        actions = planner.plan(frame, frame)
+        assert actions.shape == (3, 25)
+
+    def test_inventory_stall_penalty_prefers_clean_sequence(self):
+        cfg = CEMConfig(
+            population_size=4,
+            n_iterations=1,
+            horizon=3,
+            inventory_stall_penalty=0.25,
+        )
+        rollout = _make_constant_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        def fake_optimize(cost_fn, **kwargs):
+            actions = torch.zeros(2, cfg.horizon, 25)
+            actions[0, :, 12] = 1.0
+            costs = cost_fn(actions)
+            assert costs[0] > costs[1]
+            return actions[costs.argmin().item()].clone(), [costs.min().item()]
+
+        planner._cem.optimize = MagicMock(side_effect=fake_optimize)
+
+        frame = torch.randn(3, 64, 64)
+        actions = planner.plan(frame, frame)
+        assert torch.count_nonzero(actions[:, 12]) == 0
+
+    def test_inventory_stall_penalty_can_be_disabled(self):
+        cfg = CEMConfig(
+            population_size=4,
+            n_iterations=1,
+            horizon=3,
+            inventory_stall_penalty=0.0,
+        )
+        rollout = _make_constant_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        def fake_optimize(cost_fn, **kwargs):
+            actions = torch.zeros(2, cfg.horizon, 25)
+            actions[0, :, 12] = 1.0
+            costs = cost_fn(actions)
+            assert torch.allclose(costs[0], costs[1])
+            return actions[0].clone(), [costs[0].item()]
+
+        planner._cem.optimize = MagicMock(side_effect=fake_optimize)
+
+        frame = torch.randn(3, 64, 64)
         actions = planner.plan(frame, frame)
         assert actions.shape == (3, 25)
 

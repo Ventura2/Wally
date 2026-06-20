@@ -9,6 +9,7 @@ from torch import Tensor
 from agent.buffer import TrajectoryBuffer
 from agent.config import AgentConfig
 from agent.protocol import EpisodeResult
+from agent.relay import RelayBuffer
 from agent.viewer import FrameViewerLike, NullViewer
 
 
@@ -20,12 +21,14 @@ class AgentLoop:
         config: AgentConfig,
         buffer: TrajectoryBuffer | None = None,
         viewer: FrameViewerLike | None = None,
+        relay: RelayBuffer | None = None,
     ) -> None:
         self._env = env
         self._planner = planner
         self._config = config
         self._buffer = buffer
         self._viewer: FrameViewerLike = viewer if viewer is not None else NullViewer()
+        self._relay: RelayBuffer | None = relay
 
     def run_episode(self, goal_frame: Tensor) -> EpisodeResult:
         start_time = time.monotonic()
@@ -74,9 +77,6 @@ class AgentLoop:
 
             action = plan_actions[action_index]
 
-            if self._buffer is not None:
-                self._buffer.add(current_frame, action)
-
             try:
                 next_frame, reward, done, info = self._env.step(action)
             except KeyboardInterrupt:
@@ -95,6 +95,8 @@ class AgentLoop:
                 )
 
             step_count += 1
+            if self._buffer is not None:
+                self._buffer.add(current_frame, action, info=info)
             current_frame = next_frame
             action_index += 1
 
@@ -102,6 +104,8 @@ class AgentLoop:
             viewer_info["step"] = step_count
             viewer_info["done"] = bool(done)
             pov = info.get("pov") if info else None
+            if self._relay is not None:
+                self._relay.update(pov)
             self._viewer.show(pov, info=viewer_info)
             if self._viewer.should_quit():
                 interrupted = True
