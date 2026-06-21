@@ -7,7 +7,7 @@ The agent's POV frame is exposed via `info["pov"]` on every `env.step()` and ren
 | Path | When to use | CLI |
 |------|-------------|-----|
 | **`wally-deploy` against a local vanilla server** | Windows has a working Minecraft server (1.18.1 recommended) reachable on `localhost:25565`. The `deployer.ServerEnv` uses pyCraft + a `FrameRenderer` voxel ray-cast to walk the real world. | `wally-deploy --server localhost:25565 --checkpoint <ckpt> --goal-frame <goal.png> --viewer cv2` |
-| **`wally-play` from inside the WSL2 `wally-dev` container, streamed to Windows** | MineStudio's `runtime/` + `mcprec-6.13.jar` are Linux-only; the photoreal MineStudio render only starts inside the WSL2 container. The agent loop runs in the container and the latest POV is streamed over an MJPEG HTTP relay at `http://localhost:8081/stream` — open that URL in any browser or `cv2.VideoCapture` client on Windows. See "wally-play in WSL2" below. | inside container: `PYTHONPATH=src python3 -m agent.play --relay --checkpoint /workspace/checkpoints/<ckpt>.pt --goal-frame /workspace/data/goal.png --planner cem --viewer none` ; on Windows: open `http://localhost:8081/stream` |
+| **`wally-play` from inside the WSL2 `wally-dev` container, streamed to Windows** | MineStudio's `runtime/` + `mcprec-6.13.jar` are Linux-only; the photoreal MineStudio render only starts inside the WSL2 container. The agent loop runs in the container and the latest POV is streamed over an MJPEG HTTP relay at `http://localhost:8081/stream` — open that URL in any browser or `cv2.VideoCapture` client on Windows. See "wally-play in WSL2" below. | inside container: `PYTHONPATH=src python3 -m wally.agent.play --relay --checkpoint /workspace/checkpoints/<ckpt>.pt --goal-frame /workspace/data/goal.png --planner cem --viewer none` ; on Windows: open `http://localhost:8081/stream` |
 
 ## wally-deploy (Windows, vanilla server)
 
@@ -57,7 +57,7 @@ podman exec wally-dev bash -c @'
   #!/bin/bash
   export PYTHONPATH=/workspace/src
   export MINESTUDIO_DIR=/tmp/MineStudio
-  exec python3 -m agent.play \
+  exec python3 -m wally.agent.play \
     --relay --relay-host 0.0.0.0 --relay-port 8081 \
     --checkpoint /workspace/checkpoints/checkpoint_100000.pt \
     --goal-frame /workspace/checkpoints/goal_frame1.png \
@@ -79,7 +79,7 @@ podman exec wally-dev curl -s http://localhost:8081/healthz   # -> "ok"
 podman exec wally-dev tail -f /tmp/wally-play.log
 
 # 5. Stop cleanly:
-podman exec wally-dev bash -c 'pkill -TERM -f "agent.play"; sleep 2; pkill -KILL -f "agent.play"'
+podman exec wally-dev bash -c 'pkill -TERM -f "wally.agent.play"; sleep 2; pkill -KILL -f "wally.agent.play"'
 #   (orphan xvfb + java processes will be reaped as <defunct> zombies
 #    by the podman parent — harmless, they don't hold resources)
 ```
@@ -90,6 +90,70 @@ podman exec wally-dev bash -c 'pkill -TERM -f "agent.play"; sleep 2; pkill -KILL
 - `http://localhost:8081/healthz` returns `ok` once the relay thread is up. Before that, the connection is refused.
 - The Minecraft process logs benign warnings on startup: `fliteWrapper` (narrator library), `optifine/ctm/default/empty.png` (texture), `OpenAL` (sound), `Realms` (auth). All safe to ignore — see `src/collector/AGENTS.md`.
 
+### Quick-start: shorter episodes and trajectory recording
+
+The default `episode_timeout` is 1000 steps, which on the current checkpoint runs ~110s end-to-end (most of which is the agent sitting in a planner local minimum — see below). For a quick visual smoke-test, lower the timeout via a tiny `--config` YAML:
+
+```yaml
+# /tmp/quick.yaml
+replan_interval: 4
+episode_timeout: 200
+resize: [64, 64]
+```
+
+```sh
+python3 -m wally.agent.play \
+  --relay --relay-host 0.0.0.0 --relay-port 8081 \
+  --checkpoint /workspace/checkpoints/checkpoint_100000.pt \
+  --goal-frame /workspace/checkpoints/goal_frame1.png \
+  --planner cem --viewer none \
+  --config /tmp/quick.yaml
+```
+
+200 steps finishes in ~25s on the current setup — fast enough to loop while iterating on the checkpoint or the planner.
+
+To also persist what the agent did (frames, actions, and the `info` event subset — inventory, mine_block, pickup, break_item, craft_item, use_item, damage_dealt, health, food_level — see `src/wally/agent/buffer.py`), add `--record --output-dir <dir>`. The full episode is written to `<output-dir>/episode_0.npz` when the run ends (timeout, done, or `q`/`Esc`):
+
+```sh
+... --record --output-dir /workspace/ag-tests/run_wood
+# -> /workspace/ag-tests/run_wood/episode_0.npz
+```
+
+The npz contains `frames (T,64,64,3)`, `actions (T,25)`, and `events (T,)` — load with `numpy.load(..., allow_pickle=True)`. This is what the `ag-tests/*.md` files use to assert things like "did the agent pick up wood" without re-watching the video.
+
+### Verifying the world model is alive (`wally-plan-smoke`)
+
+If the agent looks broken (button-spam, frozen POV, etc.), before retraining anything, sanity-check the checkpoint itself. `wally-plan-smoke` runs the CEM planner end-to-end on two synthetic frames and reports whether the output is structured or near-zero:
+
+```sh
+# On Windows (no MineStudio needed - works on CPU torch)
+uv run wally-plan-smoke
+# uses checkpoints/checkpoint_100000.pt and plan_smoke/{current,goal}.png by default
+
+uv run wally-plan-smoke --checkpoint checkpoints/checkpoint_500.pt --output /tmp/probe.pt
+```
+
+Verdicts:
+
+- `actions are essentially zero` → model is dead, retrain needed
+- `low variance - likely noise` → model is unstable, retrain
+- `model produced structured actions` → model is fine, look at the planner/agent loop instead
+
+This is the cheapest possible signal of whether a fresh training run produced a usable checkpoint.
+
+### Viewing the relay from Windows (`tools/start-play-bind.py`)
+
+You can of course just open `http://localhost:8081/stream` in a browser, but for a proper always-on-top OpenCV window with health-check overlay, reconnect logic, and FPS readout, use the bundled viewer:
+
+```powershell
+& "D:\Projects\Personal\artificial-intelligence\wally\.venv-windows\Scripts\Activate.ps1"
+python tools\start-play-bind.py
+# or
+python tools\start-play-bind.py --url http://localhost:8081/stream --fullscreen
+```
+
+The window shows a green/red status dot (`LIVE` vs `WAITING`) and a rolling FPS counter, and reconnects with exponential backoff (`0.5, 1, 2, 4, 8 s`) when the relay drops — useful while the MineStudio JVM is still booting inside the container. Press `q` / `Esc` to quit.
+
 ### Why `setsid nohup ... & disown`?
 
 A plain `podman exec wally-dev bash -c '... &'` will be killed the moment the outer `podman exec` shell exits, because the child process group is the same as the shell. `setsid` starts a new session (no controlling terminal), `nohup` ignores SIGHUP, and `disown` removes the job from the shell's job table. Together they fully detach the agent from the `podman exec` invocation, so the process keeps running after the PowerShell command returns. This is the same pattern Docker's `dockerd` uses for containerized daemons.
@@ -99,8 +163,8 @@ A plain `podman exec wally-dev bash -c '... &'` will be killed the moment the ou
 A common visible behavior: the agent repeatedly opens and closes the inventory. This is a CEM local minimum — opening inventory produces a near-constant latent state (frozen camera + dim world) that the world model scores as marginally close to the goal latent. The fix is to mask the `inventory` action column out of the planner output:
 
 ```diff
---- a/src/agent/loop.py
-+++ b/src/agent/loop.py
+--- a/src/wally/agent/loop.py
++++ b/src/wally/agent/loop.py
 @@
              action = plan_actions[action_index]
 +            if action.dim() == 1 and action.shape[-1] > 12:

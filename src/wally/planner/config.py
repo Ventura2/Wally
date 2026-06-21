@@ -16,6 +16,22 @@ class CEMConfig(BaseModel):
     action_high: float = 1.0
     gradient_policy: Literal["detach", "straight_through"] = "detach"
     inventory_stall_penalty: float = 5e-2
+    diversity_penalty: float = 0.0
+    camera_still_penalty: float = 0.0
+
+    @field_validator("diversity_penalty")
+    @classmethod
+    def _check_diversity_penalty(cls, v: float) -> float:
+        if v < 0.0:
+            raise ValueError("diversity_penalty must be >= 0")
+        return v
+
+    @field_validator("camera_still_penalty")
+    @classmethod
+    def _check_camera_still_penalty(cls, v: float) -> float:
+        if v < 0.0:
+            raise ValueError("camera_still_penalty must be >= 0")
+        return v
 
     @field_validator("elite_frac")
     @classmethod

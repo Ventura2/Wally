@@ -35,10 +35,11 @@ wally-convert = "wally.cli.convert:main"
 wally-collect = "wally.cli.collect:main"
 wally-plan = "wally.planner.cli:main"
 wally-plan-hierarchical = "wally.planner.hierarchical_cli:main"
+wally-plan-smoke = "wally.planner.plan_smoke_cli:main"
 wally-train-curriculum = "wally.cli.train_curriculum:main"
-wally-play = "agent.play:main"
-wally-deploy = "deployer.cli:main"
-wally-validate = "validator.cli:main"
+wally-play = "wally.agent.play:main"
+wally-deploy = "wally.deployer.cli:main"
+wally-validate = "wally.validator.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

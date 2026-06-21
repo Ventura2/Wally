@@ -33,7 +33,7 @@ class TestMineStudioAgentEnv:
     def test_reset_returns_tensor_correct_shape(self, mock_env):
         env, sim = mock_env
         obs = env.reset()
-        assert isinstance(obs, Tensor)
+        assert isinstance(obs, torch.Tensor)
         assert obs.shape == (3, 64, 64)
         sim.reset.assert_called_once()
 
@@ -49,7 +49,7 @@ class TestMineStudioAgentEnv:
         action = torch.zeros(25)
         action[2] = 1.0
         obs, reward, done, info = env.step(action)
-        assert isinstance(obs, Tensor)
+        assert isinstance(obs, torch.Tensor)
         assert obs.shape == (3, 64, 64)
         assert reward == 1.0
         assert done is False
@@ -77,5 +77,5 @@ class TestMineStudioAgentEnv:
         env.reset()
         action = torch.full((25,), 5.0)
         obs, reward, done, info = env.step(action)
-        assert isinstance(obs, Tensor)
+        assert isinstance(obs, torch.Tensor)
         assert obs.shape == (3, 64, 64)

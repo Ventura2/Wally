@@ -57,6 +57,10 @@ def create_dataloader(
 
     if pin_memory is None:
         pin_memory = torch.cuda.is_available()
+    # PyTorch requires prefetch_factor=None when num_workers == 0.
+    if num_workers == 0:
+        prefetch_factor = None
+        persistent_workers = False
     return torch.utils.data.DataLoader(
         dataset.batched(batch_size, collation_fn=collate_samples),
         batch_size=None,

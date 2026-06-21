@@ -155,6 +155,8 @@ class GoalConditionedPlanner:
     ) -> torch.Tensor:
         base_cost = self._cost_fn(z_H, z_g)
         penalty = self._inventory_stall_penalty(actions)
+        penalty = penalty + self._diversity_penalty(actions)
+        penalty = penalty + self._camera_still_penalty(actions)
         return base_cost + penalty
 
     def _inventory_stall_penalty(self, actions: torch.Tensor) -> torch.Tensor:
@@ -164,3 +166,34 @@ class GoalConditionedPlanner:
         return self._config.inventory_stall_penalty * inventory_usage.pow(2).sum(
             dim=-1
         )
+
+    def _diversity_penalty(self, actions: torch.Tensor) -> torch.Tensor:
+        """Reward candidates that diverge from the population mean.
+
+        Breaks the "all CEM elites converge to the same low-cost action"
+        local minimum (e.g. button-spam, no-op). Each candidate's cost is
+        reduced by how far it sits from the population mean, so the
+        optimizer prefers diverse action sequences over a single sharp
+        optimum that the world model may have predicted wrongly.
+        """
+        if self._config.diversity_penalty <= 0.0 or actions.shape[0] < 2:
+            return torch.zeros(actions.shape[0], device=actions.device)
+        pop_mean = actions.mean(dim=0, keepdim=True)
+        deviation_sq = (actions - pop_mean).pow(2).sum(dim=(-2, -1))
+        return -self._config.diversity_penalty * deviation_sq
+
+    def _camera_still_penalty(self, actions: torch.Tensor) -> torch.Tensor:
+        """Penalize plans that keep the camera still (dims 0 and 1).
+
+        The "do nothing" basin often has zero camera motion but
+        button-spam on every other dim; a positive penalty on
+        ``1 - |camera|`` forces the planner to commit to some camera
+        movement, which makes the agent visibly turn the view.
+        """
+        if self._config.camera_still_penalty <= 0.0 or actions.shape[-1] < 2:
+            return torch.zeros(actions.shape[0], device=actions.device)
+        camera = actions[..., :2].clamp(-1.0, 1.0)
+        # 1 - |camera| is large when camera is still, near zero when moving.
+        # clamp inside, no negative penalty.
+        still = (1.0 - camera.abs()).sum(dim=(-2, -1))
+        return self._config.camera_still_penalty * still

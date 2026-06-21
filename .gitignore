@@ -75,3 +75,6 @@ wandb/
 # Loss-curve dashboard outputs from tools/loss_dashboard.py
 loss_curve.csv
 loss_curve.png
+
+# Planner smoke CLI scratch outputs
+plan_smoke/

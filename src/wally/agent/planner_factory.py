@@ -50,7 +50,11 @@ def build_planner(
         from wally.agent.protocol import FlatPlannerAdapter
 
         cem_config = cem_config.model_copy(
-            update={"inventory_stall_penalty": 0.25}
+            update={
+                "inventory_stall_penalty": 0.25,
+                "diversity_penalty": 1.0e-3,
+                "camera_still_penalty": 1.0e-3,
+            }
         )
         planner = GoalConditionedPlanner(rollout, encoder, cem_config)
         return FlatPlannerAdapter(planner)

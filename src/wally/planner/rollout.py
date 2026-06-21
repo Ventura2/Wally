@@ -124,11 +124,13 @@ class LatentRollout:
         checkpoint_path: str | Path,
         *,
         device: torch.device | str | None = None,
+        gradient_policy: str = "detach",
         model_config: dict[str, object] | None = None,
     ) -> LatentRollout:
         return cls(
             checkpoint_path=checkpoint_path,
             device=device,
+            gradient_policy=gradient_policy,
             model_config=model_config,
         )
 
