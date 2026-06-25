@@ -16,7 +16,8 @@ Collect → Convert → Train → Play → Deploy
 | **Convert** | `src/wally/data/converter.py` | Reassembles per-step shards into episode sequences (`.npz` files with frames + actions arrays) for training. |
 | **Validate** | `src/wally/validator/` | CLI + API for inspecting shard stats, validating schema/JPEG integrity, and extracting sample frames. |
 | **Train** | `src/wally/` | Trains a LeWorldModel (ViT encoder + causal Transformer predictor + SIGReg) on converted shards. |
-| **Play** | `src/wally/agent/` | Runs a goal-conditioned agent loop locally via MineStudio — plan, execute, observe, repeat — with warm-start CEM replanning and trajectory recording. |
+| **Train hierarchy** | `src/wally/hierarchy/` | Trains L1/L2/L3 JEPA world models on top of a frozen L0 checkpoint. Continuous-embedding streaming protocol between layers, drift-triggered replanning. See `docs/hierarchical-world-model.md`. |
+| **Play** | `src/wally/agent/` | Runs a goal-conditioned agent loop locally via MineStudio — plan, execute, observe, repeat — with warm-start CEM replanning and trajectory recording. Supports a hierarchical-embedding planner. |
 | **Deploy** | `src/wally/deployer/` | Runs trained agent on Minecraft — locally via MineStudio or on a live server via network protocol. |
 
 ## Concepts
@@ -237,7 +238,7 @@ training:
   amp_dtype: bfloat16      # autocast dtype; use "float16" for GradScaler path
   checkpoint_interval: 1000
   log_interval: 100
-  data_dir: data/shards/chunks
+  data_dir: data/shards/treechop_full
   output_dir: checkpoints
   num_workers: 8
   persistent_workers: true
@@ -312,6 +313,34 @@ wally-train-curriculum \
     --patience 5
 ```
 
+#### Hierarchical world-model training (L1, L2, L3)
+
+On top of a trained L0 checkpoint, train the JEPA world-model stack that
+plans in continuous embedding space at longer time horizons:
+
+```bash
+# L1: 64 frames ahead, 64-dim embeddings (needs the L0 checkpoint)
+wally-train-hierarchy --layer l1 --config configs/hierarchy_l1.yaml \
+    --l0-checkpoint checkpoints/wood_1000/checkpoint_1000.pt
+
+# L2: 512 frames ahead, 32-dim (needs the L1 checkpoint)
+wally-train-hierarchy --layer l2 --config configs/hierarchy_l2.yaml \
+    --l0-checkpoint checkpoints/wood_1000/checkpoint_1000.pt \
+    --lower-checkpoint checkpoints/hierarchy_l1/checkpoint_2000.pt
+
+# L3: 4096 frames ahead, 16-dim (needs the L2 checkpoint)
+wally-train-hierarchy --layer l3 --config configs/hierarchy_l3.yaml \
+    --l0-checkpoint checkpoints/wood_1000/checkpoint_1000.pt \
+    --lower-checkpoint checkpoints/hierarchy_l2/checkpoint_2000.pt
+```
+
+Each upper layer is a frozen-stack-of-encoders + trainable linear
+projection + a small JEPA Transformer. Layers communicate by
+continuous `Tensor[D]` embeddings only (no strings, no skill IDs);
+each layer surfaces from its background loop and re-plans when
+predicted-vs-actual drift exceeds a per-layer threshold. Full
+reference: `docs/hierarchical-world-model.md`.
+
 ### Step 5: Play (local agent loop)
 
 Run a goal-conditioned agent locally via MineStudio. The agent plans, executes, observes, and replans in a loop:
@@ -327,7 +356,12 @@ The agent loop:
 - Executes actions in the environment at fixed intervals
 - Replans with warm-start (shifts previous plan, reuses CEM samples)
 - Records trajectories for analysis or retraining
-- Supports both flat and hierarchical planners (`--planner hierarchical`)
+- Supports flat (`--planner cem`, `--planner gradient`), hierarchical
+  (`--planner hierarchical`) and hierarchical-embedding
+  (`--planner hierarchical-embedding --hierarchy-checkpoint ...`) planners.
+  The hierarchical-embedding path requires L1+ checkpoints from
+  `wally-train-hierarchy` and an optional `--target-embedding` goal
+  vector instead of a goal frame.
 
 #### Watching the agent live
 
@@ -628,21 +662,23 @@ uv run mypy
 
 ```
 src/
-  wally/         # the wally package (importable as `wally`)
-    collector/   # env wrapper, recorder, buffer, config, raw_shard_writer
-    deployer/    # server connector, auth, session manager, action throttler, executor, frame renderer, safety filters, ServerEnv adapter, logging, shutdown, CLI
-    exporter/    # ShardWriter, manifest generation (legacy, used by tests)
-    validator/   # shard inspection, validation, sample extraction
-    models/      # ViT encoder, action embedder, causal Transformer predictor, recurrent encoder
-    data/        # WebDataset shard loading, preprocessing, dataloader, converter
-    training/    # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation, curriculum, curiosity, ensemble
-    config/      # TrainConfig, ModelConfig, YAML loader
-    planner/     # CEM, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
-    cli/         # wally-train, wally-convert, wally-collect, wally-train-curriculum entry points
-    agent/       # goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
-configs/         # example YAML configs
-tests/           # unit tests + end-to-end integration test
-tools/           # standalone scripts (loss dashboard, goal-conditioned eval, shard utilities)
+  wally/             # the wally package (importable as `wally`)
+    collector/       # env wrapper, recorder, buffer, config, raw_shard_writer
+    deployer/        # server connector, auth, session manager, action throttler, executor, frame renderer, safety filters, ServerEnv adapter, logging, shutdown, CLI
+    exporter/        # ShardWriter, manifest generation (legacy, used by tests)
+    validator/       # shard inspection, validation, sample extraction
+    models/          # ViT encoder, action embedder, causal Transformer predictor, recurrent encoder
+    data/            # WebDataset shard loading, preprocessing, dataloader, converter
+    training/        # losses, SIGReg, optimizer, scheduler, checkpoint, trainer, evaluation, curriculum, curiosity, ensemble
+    config/          # TrainConfig, ModelConfig, YAML loader
+    planner/         # CEM, latent rollout, goal-conditioned planner, gradient MPC, subgoal detector, high-level planner, hierarchical planner
+    hierarchy/       # L1/L2/L3 JEPA world models, message bus, layer runtime, drift detection, hierarchical embedding planner, training loop
+    cli/             # wally-train, wally-convert, wally-collect, wally-train-curriculum, wally-train-hierarchy entry points
+    agent/           # goal-conditioned agent loop (env adapter, planner protocol, trajectory buffer, agent loop, play CLI)
+configs/             # example YAML configs
+tests/               # unit tests + end-to-end integration test
+tools/               # standalone scripts (loss dashboard, goal-conditioned eval, shard utilities)
+docs/                # hierarchical-world-model, live-viewer, openspec-workflow, gpu-setup
 ```
 
 ## References

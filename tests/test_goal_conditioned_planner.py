@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
+from wally.planner.cem import CEMOptimizer
 from wally.planner.config import CEMConfig
 from wally.planner.plan import GoalConditionedPlanner
 
@@ -216,6 +217,123 @@ class TestGoalConditionedPlannerCPU:
 
         assert isinstance(actions, torch.Tensor)
         assert torch.isfinite(actions).all()
+
+
+class TestGoalConditionedPlannerTargetEmbedding:
+    def test_plan_with_target_embedding_only(self):
+        latent_dim = 8
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout(latent_dim=latent_dim)
+        encoder = _make_encoder(latent_dim=latent_dim)
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current_frame = torch.randn(3, 64, 64)
+        target_embedding = torch.randn(latent_dim)
+
+        actions = planner.plan(current_frame, target_embedding=target_embedding)
+        assert isinstance(actions, torch.Tensor)
+        assert actions.shape == (3, 25)
+        assert torch.isfinite(actions).all()
+
+    def test_plan_with_goal_frame_only(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current = torch.randn(3, 64, 64)
+        goal = torch.randn(3, 64, 64)
+        actions = planner.plan(current, goal)
+        assert actions.shape == (3, 25)
+
+    def test_plan_both_goal_frame_and_target_embedding_raises(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current = torch.randn(3, 64, 64)
+        goal = torch.randn(3, 64, 64)
+        target = torch.randn(8)
+        with pytest.raises(ValueError, match="Exactly one"):
+            planner.plan(current, goal, target_embedding=target)
+
+    def test_plan_neither_goal_frame_nor_target_embedding_raises(self):
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout()
+        encoder = _make_encoder()
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current = torch.randn(3, 64, 64)
+        with pytest.raises(ValueError, match="Exactly one"):
+            planner.plan(current)
+
+    def test_plan_with_target_embedding_skips_goal_encoder(self):
+        latent_dim = 8
+        cfg = CEMConfig(population_size=16, n_iterations=2, horizon=3)
+        rollout = _make_mock_rollout(latent_dim=latent_dim)
+        encoder = _make_encoder(latent_dim=latent_dim)
+        planner = GoalConditionedPlanner(rollout, encoder, cfg, device="cpu")
+
+        current = torch.randn(3, 64, 64)
+        target = torch.randn(latent_dim)
+        planner.plan(current, target_embedding=target)
+        assert encoder.call_count == 1
+
+
+class TestCEMOptimizerEmbeddingMode:
+    def test_embedding_mode_returns_single_vector(self):
+        opt = CEMOptimizer()
+        rng = torch.Generator().manual_seed(0)
+
+        def cost(x: torch.Tensor) -> torch.Tensor:
+            target = torch.ones_like(x)
+            return ((x - target) ** 2).sum(dim=-1)
+
+        result, history = opt.optimize(
+            cost,
+            horizon=1,
+            action_dim=8,
+            population_size=64,
+            n_iterations=5,
+            rng=rng,
+            search_space="embedding",
+        )
+        assert result.dim() == 1
+        assert result.shape == (8,)
+        assert len(history) == 5
+        assert history[-1] < history[0]
+
+    def test_embedding_mode_requires_horizon_one(self):
+        opt = CEMOptimizer()
+        with pytest.raises(ValueError, match="horizon=1"):
+            opt.optimize(
+                lambda x: torch.zeros(x.shape[0]),
+                horizon=5,
+                action_dim=8,
+                search_space="embedding",
+            )
+
+    def test_embedding_mode_respects_bounds(self):
+        opt = CEMOptimizer()
+        rng = torch.Generator().manual_seed(0)
+
+        def cost(x: torch.Tensor) -> torch.Tensor:
+            return torch.zeros(x.shape[0])
+
+        result, _ = opt.optimize(
+            cost,
+            horizon=1,
+            action_dim=4,
+            population_size=16,
+            n_iterations=2,
+            action_low=-0.3,
+            action_high=0.3,
+            rng=rng,
+            search_space="embedding",
+        )
+        assert result.min() >= -0.3
+        assert result.max() <= 0.3
 
 
 class TestGoalConditionedPlannerCUDA:

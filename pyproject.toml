@@ -19,6 +19,7 @@ dependencies = [
     "einops>=0.6.0",
     "matplotlib>=3.7.0",
     "pydantic>=2.0.0",
+    "opencv-python>=4.8.0",
     "pyCraft",
 ]
 
@@ -37,6 +38,7 @@ wally-plan = "wally.planner.cli:main"
 wally-plan-hierarchical = "wally.planner.hierarchical_cli:main"
 wally-plan-smoke = "wally.planner.plan_smoke_cli:main"
 wally-train-curriculum = "wally.cli.train_curriculum:main"
+wally-train-hierarchy = "wally.cli.train_hierarchy:main"
 wally-play = "wally.agent.play:main"
 wally-deploy = "wally.deployer.cli:main"
 wally-validate = "wally.validator.cli:main"

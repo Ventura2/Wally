@@ -19,7 +19,7 @@ class TestParseArgs:
 
     def test_default_device(self):
         args = parse_args(["--config", "test.yaml"])
-        assert args.device == "auto"
+        assert args.device == "cuda"
 
     def test_device_cpu(self):
         args = parse_args(["--config", "test.yaml", "--device", "cpu"])

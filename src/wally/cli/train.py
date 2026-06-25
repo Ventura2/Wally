@@ -35,9 +35,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--device",
-        choices=["auto", "cpu", "cuda"],
-        default="auto",
-        help="Device to train on (default: auto).",
+        choices=["cuda", "cpu"],
+        default="cuda",
+        help=(
+            "Device to train on. Training always uses GPU; the default is "
+            "'cuda'. Pass 'cpu' only for fast smoke tests on tiny configs "
+            "(a warning is logged). If 'cuda' is selected but "
+            "torch.cuda.is_available() is False, the CLI exits with a clear "
+            "error pointing at docs/gpu-setup.md."
+        ),
     )
     parser.add_argument(
         "--log-file",
@@ -81,12 +87,24 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Data directory not found: %s", train_config.data_dir)
         sys.exit(1)
 
-    if args.device != "auto":
-        device = torch.device(args.device)
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
+    if args.device == "cpu":
+        logger.warning(
+            "Training on CPU is not supported for production runs. This path "
+            "exists only for fast smoke tests on tiny configs. Expect OOMs or "
+            "extreme slowness on real datasets."
+        )
         device = torch.device("cpu")
+    else:
+        if not torch.cuda.is_available():
+            logger.error(
+                "Training requires a GPU but torch.cuda.is_available() is "
+                "False. This usually means PyTorch was installed without CUDA "
+                "support or the active venv is CPU-only. Reinstall torch from "
+                "the TheRock multi-arch index as shown in docs/gpu-setup.md "
+                "(\"Windows — recommended for training\")."
+            )
+            sys.exit(2)
+        device = torch.device("cuda")
     logger.info("Using device: %s", device)
 
     model = LeWorldModel(

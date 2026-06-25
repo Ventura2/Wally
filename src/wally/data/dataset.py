@@ -127,7 +127,20 @@ def build_pipeline(
 ) -> wds.WebDataset:
     """Build a WebDataset pipeline with decoding, preprocessing, and sampling."""
     shards = find_shards(data_dir)
-    dataset = wds.WebDataset(shards, shardshuffle=shuffle)
+    # empty_check=False: when num_workers > number of shards, some workers
+    # receive no shards and the default check raises ValueError("No samples
+    # found in dataset; perhaps you have fewer shards than workers"). This
+    # commonly happens with small smoke-test shard sets (e.g. 2 shards
+    # across 8 workers). Disabling the check lets those workers quietly
+    # yield nothing while the others keep producing samples.
+    # shardshuffle must be a positive integer (number of shards to keep in
+    # memory and randomly draw from) or 0/False. Passing a bool triggers a
+    # WebDataset UserWarning. We translate our bool `shuffle` to 100 to keep
+    # the previous behavior (randomly pick from up to 100 shards).
+    shard_shuffle_size = 100 if shuffle else 0
+    dataset = wds.WebDataset(
+        shards, shardshuffle=shard_shuffle_size, empty_check=False
+    )
 
     if shuffle:
         dataset = dataset.shuffle(100)

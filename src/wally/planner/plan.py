@@ -48,18 +48,35 @@ class GoalConditionedPlanner:
     def plan(
         self,
         current_frame: torch.Tensor,
-        goal_frame: torch.Tensor,
+        goal_frame: torch.Tensor | None = None,
         *,
+        target_embedding: torch.Tensor | None = None,
         return_cost: bool = False,
     ) -> torch.Tensor | tuple[torch.Tensor, float]:
-        current_frame, goal_frame, squeeze = self._normalize_frames(
-            current_frame, goal_frame
-        )
+        if (goal_frame is None) == (target_embedding is None):
+            raise ValueError(
+                "Exactly one of goal_frame or target_embedding must be provided"
+            )
+
+        if current_frame.dim() == 3:
+            current_frame = current_frame.unsqueeze(0)
+        squeeze = current_frame.shape[0] == 1
         current_frame = current_frame.to(self._device)
-        goal_frame = goal_frame.to(self._device)
 
         z_0 = self._encoder(current_frame).mean(dim=0, keepdim=True)
-        z_g = self._encoder(goal_frame).mean(dim=0, keepdim=True)
+
+        if target_embedding is not None:
+            if target_embedding.device != self._device:
+                target_embedding = target_embedding.to(self._device)
+            if target_embedding.dim() == 1:
+                z_g = target_embedding.unsqueeze(0)
+            else:
+                z_g = target_embedding
+        else:
+            goal_frame = goal_frame.to(self._device)
+            if goal_frame.dim() == 3:
+                goal_frame = goal_frame.unsqueeze(0)
+            z_g = self._encoder(goal_frame).mean(dim=0, keepdim=True)
 
         def cost_fn(actions: torch.Tensor) -> torch.Tensor:
             pop = actions.shape[0]
@@ -78,6 +95,7 @@ class GoalConditionedPlanner:
             n_iterations=self._config.n_iterations,
             action_low=self._config.action_low,
             action_high=self._config.action_high,
+            init_mean=self._warm_start_mean,
             device=self._device,
         )
 

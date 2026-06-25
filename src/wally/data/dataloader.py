@@ -62,6 +62,8 @@ def create_dataloader(
         prefetch_factor = None
         persistent_workers = False
     return torch.utils.data.DataLoader(
+        # empty_check is set on the WebDataset constructor (see build_pipeline)
+        # because that's where the per-worker iterator check lives.
         dataset.batched(batch_size, collation_fn=collate_samples),
         batch_size=None,
         num_workers=num_workers,

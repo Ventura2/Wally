@@ -10,6 +10,7 @@ __pycache__/
 # Virtual environments
 .venv/
 .uv/
+.venv-windows/
 
 # IDE
 .vscode/
@@ -78,3 +79,7 @@ loss_curve.png
 
 # Planner smoke CLI scratch outputs
 plan_smoke/
+
+# Agent play-loop run artifacts (episodes, frame dumps, contact sheets)
+ag-tests/run_*/
+

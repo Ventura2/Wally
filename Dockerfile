@@ -1,6 +1,10 @@
 # AMD ROCm PyTorch base image
 # See: https://hub.docker.com/r/rocm/pytorch
-FROM rocm/pytorch:latest
+# Pinned to the latest Ubuntu 22.04 (jammy) build: Python 3.10 (matches the
+# MineStudio install in src/wally/collector/AGENTS.md) and the apt package
+# names referenced below. The rolling `latest` tag is now Ubuntu 24.04
+# (noble), which no longer ships `libgl1-mesa-glx` or `libegl1-mesa`.
+FROM rocm/pytorch:rocm7.2.4_ubuntu22.04_py3.10_pytorch_release_2.10.0
 
 RUN apt-get update && \
     apt-get install -y \

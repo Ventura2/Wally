@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import warnings
 from pathlib import Path
 from typing import Any
@@ -89,8 +90,8 @@ class Trainer:
         Returns:
             Metrics dict with prediction_loss, sigreg_loss, total_loss.
         """
-        frames = frames.to(self.device)
-        actions = actions.to(self.device)
+        frames = frames.to(self.device, non_blocking=True)
+        actions = actions.to(self.device, non_blocking=True)
         frames = torch.nan_to_num(frames, nan=0.0, posinf=0.0, neginf=0.0)
         actions = torch.nan_to_num(actions, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -224,26 +225,42 @@ class Trainer:
 
         logger.info("Starting training from step %d", self.global_step)
 
+        last_log_t = time.perf_counter()
         while self.global_step < self.max_steps:
             for batch in self.train_loader:
                 if self.global_step >= self.max_steps:
                     break
+
+                fetch_t = time.perf_counter()
 
                 frames = batch["frames"]
                 actions = batch["actions"]
 
                 metrics = self._training_step(frames, actions)
 
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                step_t = time.perf_counter()
+
+                fetch_s = fetch_t - last_log_t
+                gpu_s = step_t - fetch_t
+                total_s = step_t - last_log_t
+                last_log_t = step_t
+
                 # Logging
                 if self.global_step % self.log_interval == 0:
                     logger.info(
                         "Step %d | prediction_loss=%.4f | sigreg_loss=%.4f"
-                        " | total_loss=%.4f | lr=%.6f",
+                        " | total_loss=%.4f | lr=%.6f"
+                        " | fetch=%.2fs gpu=%.3fs total=%.2fs",
                         self.global_step,
                         metrics.get("prediction_loss", 0),
                         metrics.get("sigreg_loss", 0),
                         metrics.get("total_loss", 0),
                         metrics.get("learning_rate", 0),
+                        fetch_s,
+                        gpu_s,
+                        total_s,
                     )
                     log_metrics(metrics, self.global_step)
 

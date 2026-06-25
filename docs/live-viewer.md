@@ -37,39 +37,50 @@ The `wally-play` CLI runs the goal-conditioned agent loop against the photoreal 
 
 This is the working sequence — copy-pasteable. Assumes the project is at `D:\Projects\Personal\artificial-intelligence\wally` on Windows (mounted at `/workspace` inside the container), and that a checkpoint + goal frame already exist in `checkpoints/`.
 
-```powershell
-# 0. One-time container setup — must include the relay port mapping.
-#    The compose file (network_mode: host) exposes it automatically;
-#    for a plain `podman run`, add `-p 8081:8081`.
-podman machine start
-podman run -d --name wally-dev --hostname wally-dev --network pasta `
-  -v /mnt/d/Projects/Personal/artificial-intelligence/wally:/workspace:rbind `
-  -p 8081:8081 `
-  localhost/wally-dev:latest sleep infinity
+**Caveat:** the command below assumes the `wally-dev` container was already
+created with the relay port mapped (`-p 8081:8081`). If you need to create
+it fresh, the first `podman start` will fail and you need the
+`podman run -d ...` line. The wrapper PowerShell in the root `AGENTS.md`
+("Run the agent in the WSL2 container with the MJPEG relay" section)
+handles both cases automatically.
 
-# 1. From Windows, start the agent detached inside the container.
+```powershell
+# 0. Bring the podman machine and wally-dev container up.
+#    If wally-dev doesn't exist yet, uncomment the `podman run` line.
+podman machine start
+podman start wally-dev 2>$null
+# if ($LASTEXITCODE -ne 0) {
+#     podman run -d --name wally-dev --hostname wally-dev --network pasta `
+#       -v D:\Projects\Personal\artificial-intelligence\wally:/workspace:rbind `
+#       -p 8081:8081 `
+#       localhost/wally-dev:latest sleep infinity
+# }
+
+# 1. Write a start script and copy it into the container, then run detached.
 #    Use the system Python 3.10 + the system-installed MineStudio
 #    at /usr/local/lib/python3.10/dist-packages/ (installed by the
 #    Dockerfile). --viewer none suppresses the local OpenCV window
 #    (the MJPEG stream IS the viewer).
-podman exec wally-dev bash -c @'
-  cat > /tmp/start-play.sh << "EOF"
-  #!/bin/bash
-  export PYTHONPATH=/workspace/src
-  export MINESTUDIO_DIR=/tmp/MineStudio
-  exec python3 -m wally.agent.play \
-    --relay --relay-host 0.0.0.0 --relay-port 8081 \
-    --checkpoint /workspace/checkpoints/checkpoint_100000.pt \
-    --goal-frame /workspace/checkpoints/goal_frame1.png \
-    --planner cem --viewer none
-  EOF
-  chmod +x /tmp/start-play.sh
-  setsid nohup /tmp/start-play.sh > /tmp/wally-play.log 2>&1 < /dev/null &
-  disown
+$script = @'
+#!/bin/bash
+export PYTHONPATH=/workspace/src
+export MINESTUDIO_DIR=/tmp/MineStudio
+exec python3 -m wally.agent.play \
+  --relay --relay-host 0.0.0.0 --relay-port 8081 \
+  --checkpoint /workspace/checkpoints/checkpoint_100000.pt \
+  --goal-frame /workspace/checkpoints/goal_frame1.png \
+  --planner cem --viewer none \
+  --record --output-dir /workspace/ag-tests/run_wood
 '@
+Set-Content logs\start-play.sh -Value $script -NoNewline
+podman cp logs\start-play.sh wally-dev:/tmp/start-play.sh
+podman exec wally-dev chmod +x /tmp/start-play.sh
+podman exec wally-dev mkdir -p /workspace/ag-tests/run_wood
+podman exec -d wally-dev bash -c 'setsid nohup /tmp/start-play.sh > /tmp/wally-play.log 2>&1 < /dev/null & disown'
 
 # 2. Wait ~15s for the relay to bind, then check it:
-podman exec wally-dev curl -s http://localhost:8081/healthz   # -> "ok"
+Start-Sleep 12
+podman exec wally-dev curl -s -m 3 http://localhost:8081/healthz   # -> "ok"
 
 # 3. Open the stream in any browser on the Windows host:
 #    http://localhost:8081/stream
@@ -83,6 +94,39 @@ podman exec wally-dev bash -c 'pkill -TERM -f "wally.agent.play"; sleep 2; pkill
 #   (orphan xvfb + java processes will be reaped as <defunct> zombies
 #    by the podman parent — harmless, they don't hold resources)
 ```
+
+### Analyzing the recorded trajectory
+
+If you started the agent with `--record --output-dir ...`, the full episode
+is written to `<output-dir>/episode_0.npz` when the run ends. The npz has
+`frames (T,64,64,3)`, `actions (T,25)`, and `events (T,)` (one dict per
+step with inventory, mine_block, pickup, etc.). The fastest way to know
+"did the agent do anything useful" is the bundled analyzer:
+
+```powershell
+# Copy the trajectory out of the container
+podman cp wally-dev:/workspace/ag-tests/run_wood/episode_0.npz `
+    ag-tests\run_wood\episode_0.npz
+
+# Run the analyzer (verdict at the bottom: SUCCESS / FAIL with reasons)
+& "D:\Projects\Personal\artificial-intelligence\wally\.venv-windows\Scripts\python.exe" `
+    tools\analyze_trajectory.py ag-tests\run_wood\episode_0.npz
+```
+
+The analyzer reports per-action stats (mean over time, max, non-zero
+count), camera shake magnitude, inventory spam count, mine/pickup events,
+and ends with a verdict. Two common failure modes it catches:
+
+- **CEM inventory local minimum**: `actions[:, 12] > 0.5` for > 50 steps
+  means the agent got stuck opening/closing the inventory. The stream
+  shows the inventory UI flashing open/closed. Fix: train more, or
+  apply the `action[12]=0` mask in `src/wally/agent/loop.py` (see
+  `src/wally/agent/AGENTS.md`).
+- **Camera shake, no progress**: `|delta(yaw)| > 0.1` on > 50% of
+  consecutive step pairs with no inventory spam and no movement means
+  the model is too under-trained to commit to a direction. Fix: train
+  longer (1k → 5k → 10k is the typical progression; see the table in
+  root `AGENTS.md` → "Expected results by training size").
 
 ### What you should see
 

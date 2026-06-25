@@ -33,8 +33,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--goal-frame",
         type=Path,
-        required=True,
-        help="Path to goal image.",
+        default=None,
+        help=(
+            "Path to goal image. Optional when --target-embedding is "
+            "provided (e.g. for the hierarchical-embedding planner)."
+        ),
+    )
+    parser.add_argument(
+        "--target-embedding",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a .pt file containing a goal embedding tensor. "
+            "Optional when --goal-frame is provided."
+        ),
     )
     parser.add_argument(
         "--config",
@@ -56,9 +68,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--planner",
-        choices=["cem", "gradient", "hierarchical"],
+        choices=["cem", "gradient", "hierarchical", "hierarchical-embedding"],
         default="cem",
         help="Planner type.",
+    )
+    parser.add_argument(
+        "--hierarchy-checkpoint",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a saved hierarchy checkpoint (produced by "
+            "wally-train-hierarchy). Required for --planner "
+            "hierarchical-embedding."
+        ),
+    )
+    parser.add_argument(
+        "--layer-depth",
+        type=int,
+        default=0,
+        help=(
+            "Number of additional hierarchy layers above L0 (0 disables "
+            "the hierarchy, 1 = L1, 2 = L0+L1+L2, 3 = L0+L1+L2+L3)."
+        ),
     )
     parser.add_argument(
         "--viewer",
@@ -167,19 +198,53 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Checkpoint not found: %s", args.checkpoint)
         sys.exit(1)
 
-    if not args.goal_frame.is_file():
+    if args.goal_frame is None and args.target_embedding is None:
+        logger.error(
+            "Either --goal-frame or --target-embedding must be provided"
+        )
+        sys.exit(1)
+    if args.goal_frame is not None and not args.goal_frame.is_file():
         logger.error("Goal frame not found: %s", args.goal_frame)
+        sys.exit(1)
+    if args.target_embedding is not None and not args.target_embedding.is_file():
+        logger.error("Target embedding not found: %s", args.target_embedding)
+        sys.exit(1)
+
+    if args.planner == "hierarchical-embedding" and args.hierarchy_checkpoint is None:
+        logger.error(
+            "--planner hierarchical-embedding requires --hierarchy-checkpoint"
+        )
         sys.exit(1)
 
     config = AgentConfig.from_yaml(args.config) if args.config else AgentConfig()
     config = config.model_copy(update={"record_trajectory": args.record})
     config = _apply_relay_args(config, args)
 
-    goal_frame = _load_image_as_tensor(args.goal_frame)
+    goal_frame: torch.Tensor | None = None
+    target_embedding: torch.Tensor | None = None
+    if args.goal_frame is not None:
+        goal_frame = _load_image_as_tensor(args.goal_frame)
+    if args.target_embedding is not None:
+        target_embedding = torch.load(
+            args.target_embedding, map_location="cpu", weights_only=False
+        )
+        if isinstance(target_embedding, dict):
+            target_embedding = target_embedding.get("g", target_embedding.get("target"))
+        if not isinstance(target_embedding, torch.Tensor):
+            raise ValueError(
+                f"--target-embedding must contain a Tensor; got "
+                f"{type(target_embedding).__name__}"
+            )
 
     rollout = LatentRollout.from_checkpoint(args.checkpoint)
     encoder = rollout._model.encode
-    planner = build_planner(args.planner, rollout, encoder)
+    planner = build_planner(
+        args.planner,
+        rollout,
+        encoder,
+        hierarchy_checkpoint=args.hierarchy_checkpoint,
+        layer_depth=args.layer_depth,
+    )
 
     try:
         from wally.agent.env import MineStudioAgentEnv
@@ -225,9 +290,15 @@ def main(argv: list[str] | None = None) -> None:
         )
         relay_server.start()
 
-    loop = AgentLoop(env, planner, config, viewer=viewer, relay=relay_buffer)
+    loop = AgentLoop(
+        env, planner, config, viewer=viewer, relay=relay_buffer, l0_encoder=encoder
+    )
     try:
-        result = loop.run_episode(goal_frame)
+        if target_embedding is not None:
+            fallback = goal_frame if goal_frame is not None else torch.zeros(3, 64, 64)
+            result = loop.run_episode(fallback, target_embedding=target_embedding)
+        else:
+            result = loop.run_episode(goal_frame)
     finally:
         viewer.close()
         if relay_buffer is not None:

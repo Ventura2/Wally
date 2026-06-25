@@ -21,7 +21,7 @@ training:
   amp_dtype: bfloat16
   checkpoint_interval: 30
   log_interval: 2
-  data_dir: data/shards/chunks
+  data_dir: data/shards/treechop_full
   output_dir: checkpoints_test
   num_workers: 0
   skip_short: true

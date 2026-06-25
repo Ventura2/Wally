@@ -35,9 +35,9 @@ Tests for the relay live in `tests/test_relay.py`; for the play CLI wiring, in `
 
 ## Known planner local minimum: inventory-stuck
 
-All three planners (`cem`, `gradient`, `hierarchical`) currently converge on opening/closing the inventory forever when the goal latent is far from the agent's current state. The world model scores "inventory open" as a near-constant latent that's marginally close to many goal latents, so the CEM elites latch onto it. Symptom: the relay stream shows the inventory UI opening and closing in a tight loop.
+All four planners (`cem`, `gradient`, `hierarchical`, `hierarchical-embedding`) currently converge on opening/closing the inventory forever when the goal latent is far from the agent's current state. The world model scores "inventory open" as a near-constant latent that's marginally close to many goal latents, so the CEM elites latch onto it. Symptom: the relay stream shows the inventory UI opening and closing in a tight loop.
 
-Demo workaround (one-line, in `loop.py` — zeroes column 12 of the planned action tensor before stepping):
+**The one-line demo workaround is now active by default** in `src/wally/agent/loop.py::AgentLoop.run_episode` (after `plan_actions[action_index]` is selected, before `env.step`):
 
 ```python
 action = plan_actions[action_index]
@@ -46,7 +46,13 @@ if action.dim() == 1 and action.shape[-1] > 12:
     action[12] = 0.0
 ```
 
-Production fix: add the same penalty to the CEM cost function in `src/wally/planner/plan.py` so the planner *learns* to avoid the action:
+With this in place, runs against the 10k L0 + 5k L1 + tree-frame
+`g1` show **zero** inventory-spam steps (`inv > 0.5` = 0). Confirmed
+in `ag-tests/run_wood10k_l1_5k_tree_g1/episode_0.npz`.
+
+Production fix (still TODO): add the same penalty to the CEM cost
+function in `src/wally/planner/plan.py` so the planner *learns* to
+avoid the action, instead of just masking it at the loop boundary:
 
 ```python
 def cost_fn(actions: torch.Tensor) -> torch.Tensor:
@@ -59,3 +65,42 @@ def cost_fn(actions: torch.Tensor) -> torch.Tensor:
     inv_penalty = 1e-3 * (actions[..., 12] ** 2).sum(dim=(-2, -1))
     return latent_cost + inv_penalty
 ```
+
+## Hierarchical planner wiring
+
+`wally-play --planner hierarchical-embedding` requires three CLI args
+to actually reach `build_planner`:
+- `--hierarchy-checkpoint PATH`
+- `--layer-depth N` (1 = L0+L1, 2 = L0+L1+L2, 3 = L0+L1+L2+L3)
+- `--target-embedding PATH` (the `g1`/goal tensor, in place of `--goal-frame`)
+
+`src/wally/agent/play.py` parses these but **must forward them as
+keyword arguments** to `build_planner`; passing them positionally drops
+them on the floor. The factory also needs the `lowest_encoder` for
+the planner to use the 64-dim L1 path (not the 192-dim L0 fallback);
+without it the L1 JEPA errors with `mat1 and mat2 shapes cannot be
+multiplied (1x192 and 64x128)`. Both fixes are in
+`src/wally/agent/planner_factory.py::build_planner`.
+
+L2 (and deeper) is not runnable yet — see
+`src/wally/hierarchy/AGENTS.md#l2-path-is-not-viable-yet`. Passing
+`--layer-depth 2` against the L1-only checkpoint will load the L1
+weights for the L2 slot and produce random targets.
+
+## Goal embeddings (`g1`, `g2`, `g3`)
+
+The `g1` tensor is a 64-dim vector saved with `torch.save({"g": g},
+"checkpoints/g1_get_wood.pt")`. The agent loads it via
+`--target-embedding PATH`. The contents matter: a centroid of random
+training chunks will pull the agent toward whatever the dataset mean
+looks like (e.g. a "water + seagrass" centroid leads the agent into
+the nearest lake; see `ag-tests/run_wood10k_l1_5k/episode_0.npz` where
+`mine_block` totals = 1213 × `tall_seagrass`).
+
+`logs/make_g1_tree.py` is the recipe that worked: scan the shards,
+score each frame for sky + green leaves + brown trunk, take the
+centroid of the top 32 frames, encode through the trained L1Encoder.
+Result: `g1` with `norm ≈ 2.2` and the L1 drift drops to ~3-4 (vs
+~5-7 with a random centroid). For `g2` (L2) and `g3` (L3) the recipe
+will be the same shape but with the appropriate encoder and frame
+target ("have wood" / "have shelter").
