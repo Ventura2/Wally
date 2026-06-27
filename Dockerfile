@@ -1,56 +1,48 @@
-# AMD ROCm PyTorch base image
-# See: https://hub.docker.com/r/rocm/pytorch
-# Pinned to the latest Ubuntu 22.04 (jammy) build: Python 3.10 (matches the
-# MineStudio install in src/wally/collector/AGENTS.md) and the apt package
-# names referenced below. The rolling `latest` tag is now Ubuntu 24.04
-# (noble), which no longer ships `libgl1-mesa-glx` or `libegl1-mesa`.
-FROM rocm/pytorch:rocm7.2.4_ubuntu22.04_py3.10_pytorch_release_2.10.0
+# Slim MineStudio runtime for the wally-dev container.
+# The rocm/pytorch base was ~15 GB and we replaced its torch with a CPU
+# build on the next line - librocdxg in WSL2 is broken for RDNA2, so
+# the AMD stack is unusable. Use plain Ubuntu 22.04 (Python 3.10 native)
+# and let `pip install minestudio` pull its own CPU torch.
+FROM ubuntu:22.04
 
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Runtime deps: Java for the Minecraft engine, LWJGL native libs for
+# the MineStudio OpenGL render, xvfb for the headless display.
+# -dev variants and Haskell/cross-compile toolchains are dropped.
 RUN apt-get update && \
-    apt-get install -y \
-    wget \
-    git \
-    gnutls-bin \
-    openssh-client \
-    libghc-x11-dev \
-    gcc-multilib \
-    g++-multilib \
-    libglew-dev \
-    libosmesa6-dev \
-    libgl1-mesa-glx \
-    libglfw3 \
-    xvfb \
-    mesa-utils \
-    libegl1-mesa \
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libglib2.0-0 \
-    libsm6 \
-    libxrender1 \
-    libxext6 \
-    unzip \
-    openjdk-8-jdk \
-    curl && \
+    apt-get install -y --no-install-recommends \
+        python3.10 \
+        python3-pip \
+        python3.10-venv \
+        ca-certificates \
+        openjdk-8-jdk \
+        libgl1-mesa-glx \
+        libglfw3 \
+        libegl1-mesa \
+        libosmesa6 \
+        libsm6 \
+        libxrender1 \
+        libxext6 \
+        libx11-6 \
+        libglib2.0-0 \
+        xvfb \
+        unzip \
+        curl && \
     rm -rf /var/lib/apt/lists/*
-
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
-
-# Install MineStudio
-RUN pip install --upgrade pip && \
-    pip install MineStudio && \
-    python -m minestudio.simulator.entry -y
-
-# Replace the ROCm torch from the base image with a CPU-only build.
-# librocdxg in WSL2 is broken for RDNA2 (gfx1031), so the AMD torch in this
-# image is unusable for compute. CPU torch keeps the gradient / hierarchical
-# planners functional (10-50x slower than TheRock GPU on Windows, but
-# sufficient for a qualitative "watch the agent plan" loop).
-RUN pip install --index-url https://download.pytorch.org/whl/cpu \
-        --force-reinstall --no-deps torch
 
 WORKDIR /workspace
 
-# Drop into bash
+# Install MineStudio (pulls in CPU torch as a dep) and the
+# Minecraft engine jar. `python` symlink lets the original
+# MineStudio install command work as documented.
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir MineStudio psutil && \
+    python -m minestudio.simulator.entry -y && \
+    rm -rf /root/.cache/pip
+
 CMD ["bash"]
