@@ -17,6 +17,11 @@ training:
   batch_size: 16
   seq_length: 16
   alpha: 0.1
+  # VICReg auxiliary loss: decorrelates latent dims, prevents 1-D brightness collapse.
+  # Set vicreg_weight > 0 to enable; std target = per-dim std, cov weight scales the off-diag penalty.
+  vicreg_weight: 1.0
+  vicreg_std_target: 1.0
+  vicreg_cov_weight: 1.0
   use_amp: true
   amp_dtype: bfloat16
   checkpoint_interval: 1000

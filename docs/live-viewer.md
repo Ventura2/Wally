@@ -128,6 +128,29 @@ and ends with a verdict. Two common failure modes it catches:
   longer (1k → 5k → 10k is the typical progression; see the table in
   root `AGENTS.md` → "Expected results by training size").
 
+When the text report points at a step range but you also need to *see* the
+frames, run `tools/extract_anomalies.py` for an anomaly-driven contact
+sheet. Where the analyzer tells you *that* inv-spam happened at t=185..201,
+the contact sheet shows the inventory-UI-overlay frame at t=200 plus the 2
+frames before (so you can see what triggered the loop) and the 2 frames
+after (whether the agent recovered). It also produces a `frames.json`
+sidecar with the actual step indices per panel, which is what you want when
+you're pasting the image into an LLM conversation:
+
+```powershell
+& "D:\Projects\Personal\artificial-intelligence\wally\.venv-windows\Scripts\python.exe" `
+    tools\extract_anomalies.py ag-tests\run_wood\episode_0.npz
+# writes ag-tests\run_wood\anomaly_contact_sheet.png + frames.json
+```
+
+The contact sheet is the offline counterpart to the live relay: same
+underlying frames, but anomaly-driven selection (8 panels of 5-frame
+windows around inv-spam, camera-shake, cost-spike, attack-burst, first-event,
+brightness extremes, best-match-to-goal, final-frame) instead of 5 evenly
+spaced ones. See `AGENTS.md` → "Project structure" → `tools/` for the full
+relationship to `tools/extract_frames.py` (the even-spaced sampler, kept
+for non-debug "what did the run look like" glances).
+
 ### What you should see
 
 - The relay at `http://localhost:8081/stream` serves a `multipart/x-mixed-replace` MJPEG stream. The browser auto-refreshes each new frame (you'll see a quick flash between frames — that's normal).

@@ -154,6 +154,10 @@ class TestCNNCheckpointLoading:
 
         The previous _load_from_checkpoint defaulted to encoder_type="vit"
         and dropped the encoder_type field, so any cnn checkpoint failed.
+
+        Uses ``action_dim=25`` to match the production wally action
+        schema (the rollout's ``_translate_agent_action_to_l0`` permutes
+        a 25-dim agent action into the L0's training layout).
         """
         model = LeWorldModel(
             encoder_type="cnn",
@@ -161,7 +165,7 @@ class TestCNNCheckpointLoading:
             depth=1,
             num_heads=2,
             mlp_ratio=2.0,
-            action_dim=4,
+            action_dim=25,
             num_frames=4,
             pretrained=False,
         )
@@ -173,7 +177,7 @@ class TestCNNCheckpointLoading:
                 "depth": 1,
                 "num_heads": 2,
                 "mlp_ratio": 2.0,
-                "action_dim": 4,
+                "action_dim": 25,
                 "num_frames": 4,
             },
             "global_step": 0,
@@ -186,7 +190,7 @@ class TestCNNCheckpointLoading:
         assert rollout._model._is_cnn is True
 
         z_0 = torch.randn(2, 32)
-        actions = torch.randn(2, 3, 4)
+        actions = torch.randn(2, 3, 25)
         result = rollout.rollout(z_0, actions)
         assert result.shape == (2, 4, 32)
 
@@ -211,7 +215,7 @@ class TestLeWorldModelAdapterEncode:
             depth=1,
             num_heads=2,
             mlp_ratio=2.0,
-            action_dim=4,
+            action_dim=25,
             num_frames=4,
             pretrained=False,
         )
@@ -223,22 +227,35 @@ class TestLeWorldModelAdapterEncode:
     def test_vit_encode_mean_pools_over_token_axis(self) -> None:
         """LeWorldModelAdapter.encode on a ViT model must mean-pool over
         dim=1 (tokens) and match the model.encoder(frame).mean(dim=1)
-        contract within floating-point tolerance."""
+        contract within floating-point tolerance.
+
+        Uses ``img_size=64`` because ``LeWorldModelAdapter.encode``
+        resizes the agent's 224x224 frame to 64x64 (the L0's training
+        distribution, per ``src/wally/data/dataset.py``) before
+        encoding. The expected side applies the same resize so the
+        ViT (built for 64x64) can encode it.
+        """
+        import torch.nn.functional as F
+
         model = LeWorldModel(
             encoder_type="vit",
             embed_dim=192,
             depth=1,
             num_heads=2,
             mlp_ratio=2.0,
-            action_dim=4,
+            action_dim=25,
             num_frames=4,
             pretrained=False,
+            img_size=64,
         )
         adapter = LeWorldModelAdapter(model)
         frame = torch.randn(2, 3, 224, 224)
         out = adapter.encode(frame)
         assert out.shape == (2, 192)
-        expected = model.encoder(frame).mean(dim=1)
+        resized = F.interpolate(
+            frame, size=(64, 64), mode="bilinear", align_corners=False
+        )
+        expected = model.encoder(resized).mean(dim=1)
         assert torch.allclose(out, expected, atol=1e-5)
 
     def test_cnn_encode_feeds_predict_without_shape_mismatch(self) -> None:
@@ -250,13 +267,13 @@ class TestLeWorldModelAdapterEncode:
             depth=1,
             num_heads=2,
             mlp_ratio=2.0,
-            action_dim=4,
+            action_dim=25,
             num_frames=4,
             pretrained=False,
         )
         adapter = LeWorldModelAdapter(model)
         frame = torch.randn(2, 3, 224, 224)
         z = adapter.encode(frame)
-        action = torch.randn(2, 4)
+        action = torch.randn(2, 25)
         delta = adapter.predict(z, action)
         assert delta.shape == (2, 64)

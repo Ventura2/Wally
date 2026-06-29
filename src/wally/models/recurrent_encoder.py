@@ -22,9 +22,12 @@ class RecurrentEncoder(nn.Module):
         hidden_size: int = 192,
         memory_length: int = 16,
         recurrence: bool = True,
+        img_size: int | None = None,
     ) -> None:
         super().__init__()
-        self.vit_encoder = ViTEncoder(variant=vit_variant, pretrained=pretrained)
+        self.vit_encoder = ViTEncoder(
+            variant=vit_variant, pretrained=pretrained, img_size=img_size
+        )
         embed_dim = self.vit_encoder.embed_dim
         self.lstm = nn.LSTM(
             input_size=embed_dim,

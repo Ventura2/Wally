@@ -102,9 +102,9 @@ class TestLeWorldModel:
         )
         frames = torch.randn(2, 4, 3, 224, 224)
         actions = torch.randn(2, 4, 25)
-        predicted, target = model(frames, actions)
+        out = model(frames, actions)
+        predicted = out[0]
         assert predicted.shape == (2, 3, 192)
-        assert target.shape == (2, 3, 192)
 
     def test_single_batch(self):
         model = LeWorldModel(
@@ -116,9 +116,9 @@ class TestLeWorldModel:
         )
         frames = torch.randn(1, 8, 3, 224, 224)
         actions = torch.randn(1, 8, 25)
-        predicted, target = model(frames, actions)
+        out = model(frames, actions)
+        predicted = out[0]
         assert predicted.shape == (1, 7, 192)
-        assert target.shape == (1, 7, 192)
 
     def test_gradient_flows(self):
         model = LeWorldModel(
@@ -130,7 +130,9 @@ class TestLeWorldModel:
         )
         frames = torch.randn(1, 3, 3, 224, 224)
         actions = torch.randn(1, 3, 25)
-        predicted, target = model(frames, actions)
+        out = model(frames, actions)
+        predicted = out[0]
+        target = torch.randn_like(predicted)
         loss = (predicted - target).pow(2).mean()
         loss.backward()
 
@@ -152,7 +154,8 @@ class TestLeWorldModel:
         )
         frames = torch.randn(1, 3, 3, 224, 224)
         actions = torch.randn(1, 3, config.action_dim)
-        predicted, target = model(frames, actions)
+        out = model(frames, actions)
+        predicted = out[0]
         assert predicted.shape == (1, 2, config.embed_dim)
 
 

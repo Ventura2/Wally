@@ -83,6 +83,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--lower-hierarchy-checkpoint",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the next-lower hierarchy layer's checkpoint. "
+            "Required when --layer-depth >= 2 and the topmost "
+            "--hierarchy-checkpoint's model_state_dict only contains the "
+            "topmost layer's JEPAWorldModel (always the case for L2+ "
+            "checkpoints). The lower layer's JEPA + L1 LayerSpec are "
+            "loaded from here."
+        ),
+    )
+    parser.add_argument(
+        "--trm-checkpoint",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a trained TRM reachability head "
+            "(see tools/train_trm_head.py). When set, the CEM low-level "
+            "planner uses a hybrid latent-cost + TRM reachability cost "
+            "(TRM paper Eq. 6)."
+        ),
+    )
+    parser.add_argument(
+        "--trm-lambda",
+        type=float,
+        default=0.5,
+        help=(
+            "TRM weight in the hybrid cost. 0.5 follows the paper's "
+            "PushT boundary guidance; 0 = pure latent cost, 1 = pure TRM."
+        ),
+    )
+    parser.add_argument(
         "--layer-depth",
         type=int,
         default=0,
@@ -244,6 +277,9 @@ def main(argv: list[str] | None = None) -> None:
         encoder,
         hierarchy_checkpoint=args.hierarchy_checkpoint,
         layer_depth=args.layer_depth,
+        lower_hierarchy_checkpoint=args.lower_hierarchy_checkpoint,
+        trm_head_checkpoint=args.trm_checkpoint,
+        trm_lambda=args.trm_lambda,
     )
 
     try:
@@ -323,6 +359,34 @@ def main(argv: list[str] | None = None) -> None:
         out_path = args.output_dir / "episode_0.npz"
         np.savez(out_path, **result.trajectory)
         logger.info("Saved trajectory to %s", out_path)
+
+        try:
+            frames = result.trajectory["frames"]
+            diag_end_path = args.output_dir / "diag_end.png"
+            Image.fromarray(frames[-1]).save(diag_end_path)
+            logger.info("Saved diagnostic frame: %s", diag_end_path)
+
+            costs = result.trajectory.get("costs")
+            if costs is not None and len(costs) > 0:
+                spike_idx = int(np.argmax(costs))
+                spike_path = args.output_dir / f"diag_cost_spike_step{spike_idx}.png"
+                Image.fromarray(frames[spike_idx]).save(spike_path)
+                logger.info("Saved diagnostic frame: %s", spike_path)
+
+            if args.goal_frame is not None and args.goal_frame.is_file():
+                h, w = frames.shape[1], frames.shape[2]
+                goal_img = Image.open(args.goal_frame).convert("RGB").resize((w, h))
+                goal_arr = np.asarray(goal_img, dtype=np.float32)
+                best_idx, best_mse = 0, float("inf")
+                for i, f in enumerate(frames):
+                    mse = float(np.mean((f.astype(np.float32) - goal_arr) ** 2))
+                    if mse < best_mse:
+                        best_mse, best_idx = mse, i
+                best_path = args.output_dir / f"diag_best_match_step{best_idx}.png"
+                Image.fromarray(frames[best_idx]).save(best_path)
+                logger.info("Saved diagnostic frame: %s", best_path)
+        except Exception as e:
+            logger.warning("Failed to save diagnostic frames: %s", e)
 
 
 if __name__ == "__main__":

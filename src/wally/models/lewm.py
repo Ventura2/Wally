@@ -43,13 +43,16 @@ class LeWorldModel(nn.Module):
         pretrained: bool = True,
         encoder_type: str = "vit",
         num_frames: int = 16,
+        img_size: int | None = None,
     ) -> None:
         super().__init__()
         if encoder_type == "cnn":
             self.encoder: nn.Module = SimpleCNNEncoder(embed_dim=embed_dim)
             self._is_cnn = True
         else:
-            self.encoder = ViTEncoder(variant=vit_variant, pretrained=pretrained)
+            self.encoder = ViTEncoder(
+                variant=vit_variant, pretrained=pretrained, img_size=img_size
+            )
             self._is_cnn = False
 
         # Projector: encoder output → predictor hidden dim

@@ -160,7 +160,14 @@ class TestAgentLoopRecordingEnabled:
 
 
 class TestAgentLoopActionPassthrough:
-    def test_loop_does_not_mutate_inventory_action(self) -> None:
+    def test_loop_masks_inventory_action_to_zero(self) -> None:
+        """Regression: the loop forces ``action[12] = 0`` (inventory)
+        before stepping the env, even when the planner proposes a
+        non-zero inventory press. This is the CEM local-minimum
+        workaround — see ``src/wally/agent/AGENTS.md`` "Known planner
+        local minimum: inventory-stuck". Without the mask the agent
+        loops on the inventory screen.
+        """
         observed_actions: list[torch.Tensor] = []
 
         env = MagicMock()
@@ -184,7 +191,12 @@ class TestAgentLoopActionPassthrough:
 
         assert result.steps == 1
         assert observed_actions
-        assert observed_actions[0][12].item() == 1.0
+        assert observed_actions[0][12].item() == 0.0, (
+            f"Expected inventory (idx 12) masked to 0, got "
+            f"{observed_actions[0][12].item()}. The loop should force "
+            f"inventory=0 before stepping the env (CEM local-minimum "
+            f"workaround)."
+        )
 
 
 class TestAgentLoopRecordingDisabled:

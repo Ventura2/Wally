@@ -31,6 +31,7 @@ class AgentLoop:
         self._viewer: FrameViewerLike = viewer if viewer is not None else NullViewer()
         self._relay: RelayBuffer | None = relay
         self._l0_encoder = l0_encoder
+        self._ema_camera: torch.Tensor | None = None
 
     def _l0_state_embedding(self, frame: Tensor) -> Tensor:
         if self._l0_encoder is None:
@@ -54,11 +55,25 @@ class AgentLoop:
         plan_actions: Tensor | None = None
         action_index = 0
         accumulated_cost = 0.0
+        current_cost = 0.0
         step_count = 0
         interrupted = False
 
         if self._config.record_trajectory and self._buffer is None:
             self._buffer = TrajectoryBuffer()
+
+        if self._buffer is not None:
+            underlying = self._planner
+            if hasattr(underlying, "_planner"):
+                underlying = underlying._planner
+            if (
+                hasattr(underlying, "_on_replan")
+                and underlying._on_replan is None
+            ):
+                buf = self._buffer
+                underlying._on_replan = (
+                    lambda z_H, costs, z_g: buf.add_replan(z_H, costs, z_g)
+                )
 
         is_hier = hasattr(self._planner, "set_target_embedding") and hasattr(
             self._planner, "tick_with_frame"
@@ -100,11 +115,33 @@ class AgentLoop:
                 plan_actions = plan_result.actions
                 action_index = 0
                 accumulated_cost += plan_result.cost
+                current_cost = float(plan_result.cost)
 
             action = plan_actions[action_index]
             if action.dim() == 1 and action.shape[-1] > 12:
                 action = action.clone()
                 action[12] = 0.0
+                # Camera-shake workaround: clamp pitch/yaw and apply an EMA
+                # so the agent's view is stable enough to observe via the
+                # relay stream. The 1k-step L0's camera response is
+                # strongly non-monotonic (peak Δz at |cam|≈0.2–0.3) and the
+                # CEM planner exploits it; the planner also has a small
+                # positive bias that produces a slow drift (~14 units over
+                # 600 steps at clamp=0.4). Clamp=0.1 keeps the L0 near its
+                # "good" zone (clip=±0.1 has MSE=2.45, comparable to
+                # unclamped MSE=2.63), and the EMA (alpha=0.6) halves the
+                # effective per-step motion so the view drifts very slowly
+                # rather than jittering. See tools/experiments/REPORT.md §C.
+                # TODO: remove once the L0 is retrained with a monotonic
+                # camera response (Recommendation #2 in that report).
+                _CAMERA_CLAMP = 0.1
+                action[0] = action[0].clamp(-_CAMERA_CLAMP, _CAMERA_CLAMP)
+                action[1] = action[1].clamp(-_CAMERA_CLAMP, _CAMERA_CLAMP)
+                if self._ema_camera is None:
+                    self._ema_camera = action[0:2].detach().clone()
+                else:
+                    self._ema_camera = 0.6 * self._ema_camera + 0.4 * action[0:2]
+                    action[0:2] = self._ema_camera
 
             try:
                 next_frame, reward, done, info = self._env.step(action)
@@ -125,7 +162,7 @@ class AgentLoop:
 
             step_count += 1
             if self._buffer is not None:
-                self._buffer.add(current_frame, action, info=info)
+                self._buffer.add(current_frame, action, info=info, cost=current_cost)
             current_frame = next_frame
             action_index += 1
 

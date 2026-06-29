@@ -98,6 +98,36 @@ workers have died; check stderr for
 `DataLoader worker (pid(s) ...) exited unexpectedly` and fall back to
 `num_workers: 4` or a different sharding scheme.
 
+### Early stopping (L1/L2/L3)
+
+The hierarchy trainer mirrors the L0 trainer's EMA-based early stop
+(`src/wally/AGENTS.md##-early-stopping`). When the EMA of
+`total_loss` stops improving for `patience` steps, training stops
+and `checkpoint_best.pt` holds the lowest-EMA-loss weights.
+
+```yaml
+early_stop: true               # default: false
+early_stop_patience: 1500      # stop if EMA total_loss doesn't improve for N steps
+early_stop_min_step: 2000      # don't consider stopping before this step
+early_stop_ema_alpha: 0.1      # EMA smoothing factor (lower = smoother)
+early_stop_min_delta: 0.0      # minimum improvement to count as "better"
+```
+
+The defaults in `configs/hierarchy_l1_5k.yaml` and
+`configs/hierarchy_l1_smoke.yaml` leave early stop disabled so the
+short smoke runs always complete. `configs/hierarchy_l1.yaml` and
+`configs/hierarchy_l2.yaml` are designed for full runs — enable
+`early_stop: true` to save compute once the EMA plateaus.
+
+### wandb logging
+
+Set `wandb_enabled: true` (default) in the config to log to the
+`wally` wandb project. The run name is
+`<wandb_project>-<K>-<D>-step-<global_step>` so resumed runs are
+distinguishable in the dashboard. Set `wandb_project` to change the
+project, or `wandb_enabled: false` to skip wandb entirely (smoke
+tests, CI).
+
 ## L2 path: now viable
 
 The four pieces listed below are all in place as of this change;

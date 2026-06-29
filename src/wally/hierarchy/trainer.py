@@ -5,6 +5,13 @@ t + K)`` pairs from each chunk, encode both endpoints with the
 layer's encoder (frozen for the lower layer, trainable linear
 projection on top), and train a :class:`JEPAWorldModel` to predict
 ``s_{t+K}`` from ``s_t`` conditioned on ``s_{t+K}`` as the target.
+
+Supports the same early-stopping and wandb logging pattern as the
+L0 ``wally.training.trainer.Trainer`` (see
+``src/wally/AGENTS.md##-early-stopping``): an EMA of ``total_loss``
+triggers a stop after ``early_stop_patience`` steps without
+improvement, and ``checkpoint_best.pt`` is written whenever the EMA
+hits a new low.
 """
 
 from __future__ import annotations
@@ -22,8 +29,11 @@ from torch.utils.data import DataLoader
 from wally.hierarchy.config import HierarchyConfig
 from wally.hierarchy.jepa import JEPAWorldModel
 from wally.hierarchy.loss import combined_hierarchy_loss
+from wally.training.logging import init_wandb, log_metrics
 from wally.training.scheduler import create_scheduler
 from wally.training.sigreg import SIGReg
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,7 +49,8 @@ class HierarchyTrainer:
     """Trainer for the L_n JEPA world model and its linear projection.
 
     Args:
-        config: Hierarchy config (drives optimiser, scheduler, checkpointing).
+        config: Hierarchy config (drives optimiser, scheduler, checkpointing,
+            early stop, wandb).
         encoder: The layer encoder (frozen lower encoder + trainable
             linear projection). The projection's parameters are added
             to the optimiser.
@@ -99,6 +110,13 @@ class HierarchyTrainer:
         self._K = config.layers[0].K
         self._D = config.layers[0].D
 
+        # Early-stop state (mirrors wally.training.trainer.Trainer)
+        self._ema_total_loss: float | None = None
+        self._best_ema_total_loss: float = float("inf")
+        self._best_step: int = 0
+        self._steps_since_best: int = 0
+        self._stop_training: bool = False
+
     @property
     def world_model(self) -> JEPAWorldModel:
         return self._world_model
@@ -111,6 +129,28 @@ class HierarchyTrainer:
         logger = logger or logging.getLogger(self.__class__.__name__)
         self._state.global_step = 0
         self._state.last_log_t = time.perf_counter()
+
+        if self._config.wandb_enabled:
+            run_name = (
+                f"{self._config.wandb_project}-{self._K}-{self._D}"
+                f"-step-{self._state.global_step}"
+            )
+            init_wandb(
+                self._config.to_dict(),
+                project_name=self._config.wandb_project,
+                name=run_name,
+            )
+            logger.info("wandb run: %s", run_name)
+
+        if self._config.early_stop:
+            logger.info(
+                "Early stop: patience=%d, min_step=%d, ema_alpha=%.2f, min_delta=%.4f",
+                self._config.early_stop_patience,
+                self._config.early_stop_min_step,
+                self._config.early_stop_ema_alpha,
+                self._config.early_stop_min_delta,
+            )
+
         keep_going = True
         while keep_going:
             for batch in self._dataloader:
@@ -123,8 +163,16 @@ class HierarchyTrainer:
                 fetch_s = fetch_t - self._state.last_log_t
                 self._state.last_log_t = step_t
 
+                next_step = self._state.global_step + 1
+
+                wandb_metrics = dict(metrics)
+                wandb_metrics["learning_rate"] = self._optimizer.param_groups[0]["lr"]
+                wandb_metrics["fetch_s"] = fetch_s
+                wandb_metrics["gpu_s"] = gpu_s
+                wandb_metrics["total_s"] = total_s
+
                 if (
-                    self._state.global_step + 1
+                    next_step
                 ) % self._config.log_interval == 0 or self._state.global_step == 0:
                     logger.info(
                         "Step %d | prediction_loss=%.4f | sigreg_loss=%.4f | "
@@ -138,14 +186,76 @@ class HierarchyTrainer:
                         gpu_s,
                         total_s,
                     )
+                    if self._config.wandb_enabled:
+                        log_metrics(wandb_metrics, self._state.global_step)
 
-                next_step = self._state.global_step + 1
+                if self._config.early_stop:
+                    self._update_early_stop(metrics.get("total_loss", 0.0))
+
                 if (
                     next_step % self._config.checkpoint_interval == 0
                     or next_step == self._config.max_steps
                 ):
                     self._save_checkpoint(next_step)
+
                 self._state.global_step = next_step
+
+                if self._stop_training:
+                    keep_going = False
+                    break
+
+        if self._stop_training:
+            logger.info(
+                "Training stopped early at step %d "
+                "(best EMA total_loss=%.4f at step %d, patience=%d, "
+                "min_step=%d). Use checkpoint_best.pt for the best weights.",
+                self._state.global_step,
+                self._best_ema_total_loss,
+                self._best_step,
+                self._config.early_stop_patience,
+                self._config.early_stop_min_step,
+            )
+        else:
+            logger.info(
+                "Training complete. Final checkpoint saved at step %d",
+                self._state.global_step,
+            )
+
+    def _update_early_stop(self, total_loss: float) -> None:
+        if self._state.global_step < self._config.early_stop_min_step:
+            return
+        if self._ema_total_loss is None:
+            self._ema_total_loss = float(total_loss)
+        else:
+            alpha = self._config.early_stop_ema_alpha
+            self._ema_total_loss = (
+                alpha * float(total_loss) + (1.0 - alpha) * self._ema_total_loss
+            )
+        improvement_threshold = (
+            self._best_ema_total_loss - self._config.early_stop_min_delta
+        )
+        if self._ema_total_loss < improvement_threshold:
+            self._best_ema_total_loss = self._ema_total_loss
+            self._best_step = self._state.global_step
+            self._steps_since_best = 0
+            self._save_checkpoint_best()
+            logger.info(
+                "New best EMA total_loss=%.4f at step %d (saved checkpoint_best.pt)",
+                self._best_ema_total_loss,
+                self._state.global_step,
+            )
+        else:
+            self._steps_since_best += 1
+        if self._steps_since_best >= self._config.early_stop_patience:
+            logger.info(
+                "Early-stop trigger: %d steps since best (patience=%d). "
+                "Best EMA total_loss=%.4f at step %d.",
+                self._steps_since_best,
+                self._config.early_stop_patience,
+                self._best_ema_total_loss,
+                self._best_step,
+            )
+            self._stop_training = True
 
     def _training_step(
         self, batch: dict[str, Tensor]
@@ -219,6 +329,17 @@ class HierarchyTrainer:
             "encoder_state_dict": self._encoder.state_dict(),
             "global_step": step,
             "config": self._config.to_dict(),
+        }
+        torch.save(payload, path)
+
+    def _save_checkpoint_best(self) -> None:
+        path = self._output_dir / "checkpoint_best.pt"
+        payload = {
+            "model_state_dict": self._world_model.state_dict(),
+            "encoder_state_dict": self._encoder.state_dict(),
+            "global_step": self._state.global_step,
+            "config": self._config.to_dict(),
+            "best_ema_total_loss": self._best_ema_total_loss,
         }
         torch.save(payload, path)
 

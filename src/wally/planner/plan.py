@@ -7,10 +7,29 @@ import torch
 from wally.planner.cem import CEMOptimizer
 from wally.planner.config import CEMConfig
 from wally.planner.rollout import LatentRollout
+from wally.planner.trm_head import TRMHead, hybrid_cost
 
 
 def _default_cost(z_H: torch.Tensor, z_g: torch.Tensor) -> torch.Tensor:
-    return ((z_H - z_g) ** 2).sum(dim=-1)
+    """Cosine-distance cost: ignores latent magnitude, compares direction.
+
+    The 1k-step L0's latent is dominated by frame brightness (PC1 ≈ 84% of
+    variance; `‖z‖` correlates with brightness at +0.97 per the
+    `tools/experiments/REPORT.md` 04_latent_geometry probe). The raw L2 cost
+    `‖z_H − z_g‖²` therefore mostly measures a brightness mismatch, not a
+    content mismatch — e.g. a dim cave and a dim tree score as "close" even
+    if they share no content. Normalising both latents to unit length before
+    the L2 makes the cost a *direction* comparison (bounded in [0, 4],
+    equivalent to 2·(1 − cosine_similarity)). The brightness dim is still
+    present, but the cost is no longer dominated by the magnitude
+    difference; content dims (PC2+) get equal weight per dim.
+
+    Note: the report's literal formula has a typo (`(z_H - z_g) / ‖z_H‖`
+    instead of `z_H / ‖z_H‖`); this is the standard cosine distance form.
+    """
+    z_H_unit = z_H / (z_H.norm(dim=-1, keepdim=True) + 1e-6)
+    z_g_unit = z_g / (z_g.norm(dim=-1, keepdim=True) + 1e-6)
+    return ((z_H_unit - z_g_unit) ** 2).sum(dim=-1)
 
 
 class GoalConditionedPlanner:
@@ -23,6 +42,9 @@ class GoalConditionedPlanner:
         device: torch.device | str | None = None,
         cost_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         action_dim: int = 25,
+        on_replan: Callable[[torch.Tensor, torch.Tensor, torch.Tensor], None] | None = None,
+        trm_head: TRMHead | None = None,
+        trm_lambda: float = 0.5,
     ) -> None:
         self._world_model = world_model
         self._encoder = encoder
@@ -36,6 +58,12 @@ class GoalConditionedPlanner:
         self._action_dim = action_dim
         self._cem = CEMOptimizer()
         self._warm_start_mean: torch.Tensor | None = None
+        self._on_replan = on_replan
+        self._trm_head = trm_head
+        self._trm_lambda = trm_lambda
+        if trm_head is not None:
+            trm_head.to(self._device)
+            trm_head.eval()
 
     @property
     def encoder(self) -> Callable[[torch.Tensor], torch.Tensor]:
@@ -63,6 +91,8 @@ class GoalConditionedPlanner:
         squeeze = current_frame.shape[0] == 1
         current_frame = current_frame.to(self._device)
 
+        captured: dict[str, torch.Tensor | None] = {"z_H": None, "costs": None}
+
         z_0 = self._encoder(current_frame).mean(dim=0, keepdim=True)
 
         if target_embedding is not None:
@@ -84,7 +114,10 @@ class GoalConditionedPlanner:
             z_g_exp = z_g.expand(pop, -1)
             trajectory = self._world_model.rollout(z_0_exp, actions)
             z_H = trajectory[:, -1, :]
-            return self._regularized_cost(actions, z_H, z_g_exp)
+            costs = self._regularized_cost(actions, z_H, z_g_exp)
+            captured["z_H"] = z_H.detach()
+            captured["costs"] = costs.detach()
+            return costs
 
         actions, cost_history = self._cem.optimize(
             cost_fn,
@@ -101,6 +134,9 @@ class GoalConditionedPlanner:
 
         if squeeze:
             actions = actions.squeeze(0) if actions.dim() == 3 else actions
+
+        if self._on_replan is not None and captured["z_H"] is not None:
+            self._on_replan(captured["z_H"], captured["costs"], z_g.detach())
 
         if return_cost:
             return actions, cost_history[-1]
@@ -172,6 +208,10 @@ class GoalConditionedPlanner:
         z_g: torch.Tensor,
     ) -> torch.Tensor:
         base_cost = self._cost_fn(z_H, z_g)
+        if self._trm_head is not None:
+            with torch.no_grad():
+                trm_cost = self._trm_head(z_H, z_g.expand_as(z_H))
+            base_cost = hybrid_cost(base_cost, trm_cost, lam=self._trm_lambda)
         penalty = self._inventory_stall_penalty(actions)
         penalty = penalty + self._diversity_penalty(actions)
         penalty = penalty + self._camera_still_penalty(actions)

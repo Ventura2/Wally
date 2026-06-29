@@ -64,6 +64,17 @@ class HierarchyConfig:
         checkpoint_interval: Save a checkpoint every N steps.
         log_interval: Log metrics every N steps.
         output_dir: Directory to write checkpoints to.
+        early_stop: If True, stop training when the EMA of total_loss
+            stops improving (saves ``checkpoint_best.pt`` whenever the
+            EMA improves; the ``L0`` trainer uses the same scheme).
+        early_stop_patience: Stop after this many steps without an EMA
+            improvement.
+        early_stop_min_step: Don't consider stopping before this step.
+        early_stop_ema_alpha: Smoothing factor for the EMA (lower = smoother).
+        early_stop_min_delta: Minimum EMA improvement to count as "better".
+        wandb_project: wandb project name for ``init_wandb``.
+        wandb_enabled: If False, skip wandb init/logging entirely (for
+            smoke tests and CI runs that don't want a wandb login).
     """
 
     layers: list[LayerSpec] = field(default_factory=list)
@@ -83,6 +94,13 @@ class HierarchyConfig:
     persistent_workers: bool = True
     prefetch_factor: int = 4
     use_concat_dataloader: bool = True
+    early_stop: bool = False
+    early_stop_patience: int = 500
+    early_stop_min_step: int = 1000
+    early_stop_ema_alpha: float = 0.1
+    early_stop_min_delta: float = 0.0
+    wandb_project: str = "wally"
+    wandb_enabled: bool = True
 
     def __post_init__(self) -> None:
         if not self.layers:
@@ -99,6 +117,15 @@ class HierarchyConfig:
             raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
         if self.alpha < 0.0:
             raise ValueError(f"alpha must be >= 0, got {self.alpha}")
+        if self.early_stop_patience < 1:
+            raise ValueError(
+                f"early_stop_patience must be >= 1, got {self.early_stop_patience}"
+            )
+        if self.early_stop_ema_alpha <= 0.0 or self.early_stop_ema_alpha > 1.0:
+            raise ValueError(
+                f"early_stop_ema_alpha must be in (0, 1], got "
+                f"{self.early_stop_ema_alpha}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -116,6 +143,13 @@ class HierarchyConfig:
             "output_dir": self.output_dir,
             "data_dir": self.data_dir,
             "use_concat_dataloader": self.use_concat_dataloader,
+            "early_stop": self.early_stop,
+            "early_stop_patience": self.early_stop_patience,
+            "early_stop_min_step": self.early_stop_min_step,
+            "early_stop_ema_alpha": self.early_stop_ema_alpha,
+            "early_stop_min_delta": self.early_stop_min_delta,
+            "wandb_project": self.wandb_project,
+            "wandb_enabled": self.wandb_enabled,
         }
 
     @classmethod

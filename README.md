@@ -644,6 +644,35 @@ Notes:
 - The script reads the `model:` section of `--config` to reconstruct the architecture (the checkpoint itself only stores the training config). Default: `configs/lewm_default.yaml`.
 - Default `--device cpu` is intentional: the planner creates CEM samples on CPU regardless of the world-model device, so `--device cuda` would mismatch. Use CUDA only after fixing that in the planner (`openspec/changes/fix-planner-cnn-encoder-and-device/` is the tracked fix).
 
+### Anomaly contact sheet for agent runs — `tools/extract_anomalies.py`
+
+After any `wally-play` (or `wally-deploy`) run that wrote `episode_0.npz` with `--record`, this tool produces a single labeled contact sheet (PNG + JSON) of the most interesting moments in the run. The 4×2 grid holds 8 panels, each a 5-frame window (±2 around the anomaly step) for one anomaly class:
+
+- `inv_spam` — contiguous run of `actions[:, 12] > 0.5` ≥ 5 steps (the CEM inventory-stuck local minimum)
+- `camera_shake` — pitch + yaw sign-flip bursts
+- `cost_spike` — single frame at `costs.argmax()`
+- `attack_burst` — contiguous run of `actions[:, 7] > 0.5` ≥ 3 steps
+- `first_event` — first `mine_block` / `pickup` / non-empty inventory
+- `brightness` — `argmax` and `argmin` of per-frame mean brightness
+- `best_match` — `argmin(MSE(frame, goal))` when `--goal-frame` is given
+- `final_frame` — always the last frame
+
+This is the offline counterpart to the live `wally-play --relay` MJPEG stream. Unlike the relay (which shows every frame and drowns anomalies in noise) or `tools/extract_frames.py` (5 evenly-spaced frames, useful for "what did the run look like" but blind to actual events), the contact sheet picks the 8 moments that are most likely to be *why the agent did the wrong thing* — the inv-spam cluster where the inventory UI opened, the cost spike where the planner got confused, the camera-shake burst where the model started thrashing.
+
+```bash
+# Default: 8 panels, written next to the input npz
+python tools/extract_anomalies.py ag-tests/run_wood_1k/episode_0.npz
+# writes: anomaly_contact_sheet.png  (1296x208, 8 panels)
+#         frames.json              (per-panel step indices + labels + scores)
+
+# Subset (e.g. only the cost spike + best-match panels)
+python tools/extract_anomalies.py ag-tests/run_wood_5k_trm/episode_0.npz \
+    --panels cost_spike,best_match,brightness,final_frame \
+    --goal-frame checkpoints/goal_frame1.png
+```
+
+Pairs naturally with `tools/analyze_trajectory.py` (text report — "what") and the live relay (real-time — "when"). The contact sheet is the post-hoc — "show me". See `openspec/specs/agent-anomaly-viewer/spec.md` for the full contract.
+
 ## Tests
 
 ```bash

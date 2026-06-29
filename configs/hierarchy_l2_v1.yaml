@@ -1,0 +1,33 @@
+# L2 hierarchy config (v1) — K=128 on the 5k L0 + new L1
+# Train-time horizon is K=128 latent steps; this is the layer that
+# can plan "navigate to a tree" (~100-1000 action steps).
+layers:
+  - name: l2
+    K: 128
+    D: 32
+    depth: 2
+    heads: 2
+    drift_epsilon: 0.20
+l0_checkpoint: checkpoints/wood_5000/checkpoint_5000.pt
+lr: 0.00005
+weight_decay: 0.00001
+warmup_steps: 200
+max_steps: 5000
+batch_size: 8
+alpha: 0.1
+seq_length: 256
+checkpoint_interval: 500
+log_interval: 50
+output_dir: checkpoints/hierarchy_l2_v1
+data_dir: data/shards/treechop_full
+num_workers: 2
+persistent_workers: true
+prefetch_factor: 2
+use_concat_dataloader: true
+early_stop: true
+early_stop_patience: 1000
+early_stop_min_step: 1500
+early_stop_ema_alpha: 0.1
+early_stop_min_delta: 0.0
+wandb_project: wally
+wandb_enabled: true

@@ -37,7 +37,7 @@ Tests for the relay live in `tests/test_relay.py`; for the play CLI wiring, in `
 
 All four planners (`cem`, `gradient`, `hierarchical`, `hierarchical-embedding`) currently converge on opening/closing the inventory forever when the goal latent is far from the agent's current state. The world model scores "inventory open" as a near-constant latent that's marginally close to many goal latents, so the CEM elites latch onto it. Symptom: the relay stream shows the inventory UI opening and closing in a tight loop.
 
-**The one-line demo workaround is now active by default** in `src/wally/agent/loop.py::AgentLoop.run_episode` (after `plan_actions[action_index]` is selected, before `env.step`):
+**For offline debugging**, the recommended way to visualize this is `tools/extract_anomalies.py <npz>`, which produces a single labeled contact sheet (PNG + JSON) with the inv-spam panel pinned to the exact step range. Unlike the live relay (which streams every frame and drowns the anomaly in noise), the contact sheet shows a 5-frame window around the moment the agent got stuck, plus the brightness, camera-shake, and cost-spike panels for context. Run it on a `ag-tests/*/episode_0.npz` that has `inv > 0.5` > 50 steps and you get the inventory-UI-overlay frame at the centre of the strip.**The one-line demo workaround is now active by default** in `src/wally/agent/loop.py::AgentLoop.run_episode` (after `plan_actions[action_index]` is selected, before `env.step`):
 
 ```python
 action = plan_actions[action_index]

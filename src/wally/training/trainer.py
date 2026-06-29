@@ -45,6 +45,9 @@ class Trainer:
         self.warmup_steps: int = config.get("warmup_steps", 1000)
         self.max_steps: int = config.get("max_steps", 100_000)
         self.alpha: float = config.get("alpha", 0.1)
+        self.vicreg_weight: float = config.get("vicreg_weight", 0.0)
+        self.vicreg_std_target: float = config.get("vicreg_std_target", 1.0)
+        self.vicreg_cov_weight: float = config.get("vicreg_cov_weight", 1.0)
         self.use_amp: bool = config.get("use_amp", False)
         # amp_dtype: "bfloat16" (stable, no scaler) or "float16" (needs GradScaler)
         self.amp_dtype: torch.dtype = (
@@ -57,6 +60,16 @@ class Trainer:
         self.checkpoint_interval: int = config.get("checkpoint_interval", 1000)
         self.log_interval: int = config.get("log_interval", 10)
         self.output_dir: Path = Path(config.get("output_dir", "checkpoints"))
+        self.early_stop: bool = config.get("early_stop", False)
+        self.early_stop_patience: int = config.get("early_stop_patience", 500)
+        self.early_stop_min_step: int = config.get("early_stop_min_step", 1000)
+        self.early_stop_ema_alpha: float = config.get("early_stop_ema_alpha", 0.1)
+        self.early_stop_min_delta: float = config.get("early_stop_min_delta", 0.0)
+        self._ema_total_loss: float | None = None
+        self._best_ema_total_loss: float = float("inf")
+        self._best_step: int = 0
+        self._steps_since_best: int = 0
+        self._stop_training: bool = False
 
         default_device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -104,7 +117,14 @@ class Trainer:
                 # emb_T_B_D is (T, B, D); residual loss needs (B, T, D)
                 emb_B_T_D = emb_T_B_D.transpose(0, 1)
                 total_loss, metrics = combined_loss(
-                    emb_B_T_D, predicted_change, emb_T_B_D, self.alpha, self.sigreg
+                    emb_B_T_D,
+                    predicted_change,
+                    emb_T_B_D,
+                    self.alpha,
+                    self.sigreg,
+                    vicreg_weight=self.vicreg_weight,
+                    vicreg_std_target=self.vicreg_std_target,
+                    vicreg_cov_weight=self.vicreg_cov_weight,
                 )
         else:
             predicted_change, emb_T_B_D = self.model(
@@ -112,7 +132,14 @@ class Trainer:
             )
             emb_B_T_D = emb_T_B_D.transpose(0, 1)
             total_loss, metrics = combined_loss(
-                emb_B_T_D, predicted_change, emb_T_B_D, self.alpha, self.sigreg
+                emb_B_T_D,
+                predicted_change,
+                emb_T_B_D,
+                self.alpha,
+                self.sigreg,
+                vicreg_weight=self.vicreg_weight,
+                vicreg_std_target=self.vicreg_std_target,
+                vicreg_cov_weight=self.vicreg_cov_weight,
             )
 
         if not torch.isfinite(total_loss):
@@ -131,6 +158,8 @@ class Trainer:
             metrics.setdefault("prediction_loss", float("nan"))
             metrics.setdefault("sigreg_loss", float("nan"))
             metrics.setdefault("total_loss", float("nan"))
+            if self.vicreg_weight > 0.0:
+                metrics.setdefault("vicreg_loss", float("nan"))
             metrics["learning_rate"] = self.scheduler.get_last_lr()[0]
             return metrics
 
@@ -172,6 +201,8 @@ class Trainer:
                 metrics.setdefault("prediction_loss", float("nan"))
                 metrics.setdefault("sigreg_loss", float("nan"))
                 metrics.setdefault("total_loss", float("nan"))
+                if self.vicreg_weight > 0.0:
+                    metrics.setdefault("vicreg_loss", float("nan"))
                 metrics["learning_rate"] = self.scheduler.get_last_lr()[0]
                 return metrics
             self.scaler.step(self.optimizer)
@@ -207,6 +238,8 @@ class Trainer:
                 metrics.setdefault("prediction_loss", float("nan"))
                 metrics.setdefault("sigreg_loss", float("nan"))
                 metrics.setdefault("total_loss", float("nan"))
+                if self.vicreg_weight > 0.0:
+                    metrics.setdefault("vicreg_loss", float("nan"))
                 metrics["learning_rate"] = self.scheduler.get_last_lr()[0]
                 return metrics
             self.optimizer.step()
@@ -224,9 +257,17 @@ class Trainer:
         init_wandb(self.config, name=run_name)
 
         logger.info("Starting training from step %d", self.global_step)
+        if self.early_stop:
+            logger.info(
+                "Early stop: patience=%d, min_step=%d, ema_alpha=%.2f, min_delta=%.4f",
+                self.early_stop_patience,
+                self.early_stop_min_step,
+                self.early_stop_ema_alpha,
+                self.early_stop_min_delta,
+            )
 
         last_log_t = time.perf_counter()
-        while self.global_step < self.max_steps:
+        while self.global_step < self.max_steps and not self._stop_training:
             for batch in self.train_loader:
                 if self.global_step >= self.max_steps:
                     break
@@ -249,13 +290,20 @@ class Trainer:
 
                 # Logging
                 if self.global_step % self.log_interval == 0:
+                    vicreg_str = ""
+                    vicreg_args: tuple[float, ...] = ()
+                    if "vicreg_loss" in metrics:
+                        vicreg_str = " | vicreg_loss=%.4f"
+                        vicreg_args = (metrics["vicreg_loss"],)
                     logger.info(
-                        "Step %d | prediction_loss=%.4f | sigreg_loss=%.4f"
+                        "Step %d | prediction_loss=%.4f | sigreg_loss=%.4f%s"
                         " | total_loss=%.4f | lr=%.6f"
                         " | fetch=%.2fs gpu=%.3fs total=%.2fs",
                         self.global_step,
                         metrics.get("prediction_loss", 0),
                         metrics.get("sigreg_loss", 0),
+                        vicreg_str,
+                        *vicreg_args,
                         metrics.get("total_loss", 0),
                         metrics.get("learning_rate", 0),
                         fetch_s,
@@ -263,6 +311,9 @@ class Trainer:
                         total_s,
                     )
                     log_metrics(metrics, self.global_step)
+
+                if self.early_stop:
+                    self._update_early_stop(metrics.get("total_loss", 0.0))
 
                 # Checkpointing
                 if self.global_step % self.checkpoint_interval == 0:
@@ -278,6 +329,9 @@ class Trainer:
                     )
                     logger.info("Saved checkpoint at step %d", self.global_step)
 
+                if self._stop_training:
+                    break
+
         # Final checkpoint
         ckpt_path = self.output_dir / f"checkpoint_{self.global_step}.pt"
         save_checkpoint(
@@ -289,10 +343,62 @@ class Trainer:
             scheduler=self.scheduler,
             model_config=self._model_config,
         )
-        logger.info(
-            "Training complete. Final checkpoint saved at step %d",
-            self.global_step,
-        )
+        if self._stop_training:
+            logger.info(
+                "Training stopped early at step %d (best EMA total_loss=%.4f at step %d, "
+                "patience=%d, min_step=%d). Use checkpoint_best.pt for the best weights.",
+                self.global_step,
+                self._best_ema_total_loss,
+                self._best_step,
+                self.early_stop_patience,
+                self.early_stop_min_step,
+            )
+        else:
+            logger.info(
+                "Training complete. Final checkpoint saved at step %d",
+                self.global_step,
+            )
+
+    def _update_early_stop(self, total_loss: float) -> None:
+        if self.global_step < self.early_stop_min_step:
+            return
+        if self._ema_total_loss is None:
+            self._ema_total_loss = float(total_loss)
+        else:
+            alpha = self.early_stop_ema_alpha
+            self._ema_total_loss = alpha * float(total_loss) + (1.0 - alpha) * self._ema_total_loss
+        if self._ema_total_loss < self._best_ema_total_loss - self.early_stop_min_delta:
+            self._best_ema_total_loss = self._ema_total_loss
+            self._best_step = self.global_step
+            self._steps_since_best = 0
+            best_path = self.output_dir / "checkpoint_best.pt"
+            save_checkpoint(
+                best_path,
+                self.model,
+                self.optimizer,
+                self.global_step,
+                self.config,
+                scheduler=self.scheduler,
+                model_config=self._model_config,
+            )
+            logger.info(
+                "New best EMA total_loss=%.4f at step %d (saved %s)",
+                self._best_ema_total_loss,
+                self.global_step,
+                best_path,
+            )
+        else:
+            self._steps_since_best += 1
+        if self._steps_since_best >= self.early_stop_patience:
+            logger.info(
+                "Early-stop trigger: %d steps since best (patience=%d). "
+                "Best EMA total_loss=%.4f at step %d.",
+                self._steps_since_best,
+                self.early_stop_patience,
+                self._best_ema_total_loss,
+                self._best_step,
+            )
+            self._stop_training = True
 
     def resume(self, checkpoint_path: str | Path) -> None:
         """Resume training from a checkpoint.

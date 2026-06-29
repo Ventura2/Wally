@@ -1,0 +1,33 @@
+# L1 hierarchy config (v2) — K=32 on the 5k L0 baseline
+# Train-time horizon is K=32 latent steps; this is the layer that
+# can plan "walk forward until I see a tree" (~10-100 action steps).
+layers:
+  - name: l1
+    K: 32
+    D: 64
+    depth: 2
+    heads: 4
+    drift_epsilon: 0.10
+l0_checkpoint: checkpoints/wood_5000/checkpoint_5000.pt
+lr: 0.0001
+weight_decay: 0.00001
+warmup_steps: 200
+max_steps: 10000
+batch_size: 16
+alpha: 0.1
+seq_length: 64
+checkpoint_interval: 500
+log_interval: 50
+output_dir: checkpoints/hierarchy_l1_v2
+data_dir: data/shards/treechop_full
+num_workers: 4
+persistent_workers: true
+prefetch_factor: 4
+use_concat_dataloader: true
+early_stop: true
+early_stop_patience: 1500
+early_stop_min_step: 2000
+early_stop_ema_alpha: 0.1
+early_stop_min_delta: 0.0
+wandb_project: wally
+wandb_enabled: true
